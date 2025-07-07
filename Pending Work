@@ -655,3 +655,193 @@ function Show-SettingsDialog {
     $chkDetailedLogs = New-Object System.Windows.Forms.CheckBox
     $chkDetailedLogs.Text = "Show detailed logs in console"
     $chkDetailedLogs.Size = New-Object System.Drawing.Size(400, 25)
+    $chkDetailedLogs.Location = New-Object System.Drawing.Point(30, 245)
+    $chkDetailedLogs.Checked = $global:Config.Settings.ShowDetailedLogs
+    $chkDetailedLogs.ForeColor = $global:Config.Colors.Text
+    $settingsForm.Controls.Add($chkDetailedLogs)
+
+    $chkSoundNotifications = New-Object System.Windows.Forms.CheckBox
+    $chkSoundNotifications.Text = "Enable sound notifications for completed operations"
+    $chkSoundNotifications.Size = New-Object System.Drawing.Size(400, 25)
+    $chkSoundNotifications.Location = New-Object System.Drawing.Point(30, 275)
+    $chkSoundNotifications.Checked = $global:Config.Settings.EnableSoundNotifications
+    $chkSoundNotifications.ForeColor = $global:Config.Colors.Text
+    $settingsForm.Controls.Add($chkSoundNotifications)
+
+    # Advanced Settings Section
+    $lblAdvSettings = New-Object System.Windows.Forms.Label
+    $lblAdvSettings.Text = "Advanced Settings"
+    $lblAdvSettings.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $lblAdvSettings.ForeColor = $global:Config.Colors.Text
+    $lblAdvSettings.Size = New-Object System.Drawing.Size(200, 25)
+    $lblAdvSettings.Location = New-Object System.Drawing.Point(20, 315)
+    $settingsForm.Controls.Add($lblAdvSettings)
+
+    # Information text
+    $lblInfo = New-Object System.Windows.Forms.Label
+    $lblInfo.Text = "These settings will be saved automatically and applied when you restart the application."
+    $lblInfo.ForeColor = $global:Config.Colors.Text
+    $lblInfo.Size = New-Object System.Drawing.Size(400, 20)
+    $lblInfo.Location = New-Object System.Drawing.Point(30, 340)
+    $lblInfo.Font = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Italic)
+    $settingsForm.Controls.Add($lblInfo)
+
+    # Buttons
+    $btnOK = [StandardButton]::new()
+    $btnOK.Text = "Save"
+    $btnOK.Size = New-Object System.Drawing.Size(90, 32)
+    $btnOK.Location = New-Object System.Drawing.Point(370, 340)
+    $btnOK.DialogResult = "OK"
+    $settingsForm.Controls.Add($btnOK)
+
+    $btnCancel = [StandardButton]::new()
+    $btnCancel.Text = "Cancel"
+    $btnCancel.Size = New-Object System.Drawing.Size(90, 32)
+    $btnCancel.Location = New-Object System.Drawing.Point(470, 340)
+    $btnCancel.DialogResult = "Cancel"
+    $settingsForm.Controls.Add($btnCancel)
+
+    $settingsForm.AcceptButton = $btnOK
+    $settingsForm.CancelButton = $btnCancel
+
+    # Event handlers
+    $btnBrowseInput.Add_Click({
+        $fbd = New-Object System.Windows.Forms.FolderBrowserDialog
+        $fbd.Description = "Select Default Input Folder"
+        if (-not [string]::IsNullOrWhiteSpace($txtInputPath.Text)) {
+            $fbd.SelectedPath = $txtInputPath.Text
+        }
+        if ($fbd.ShowDialog() -eq "OK") {
+            $txtInputPath.Text = $fbd.SelectedPath
+        }
+    })
+    
+    $btnBrowseOutput.Add_Click({
+        $fbd = New-Object System.Windows.Forms.FolderBrowserDialog
+        $fbd.Description = "Select Default Output Folder"
+        if (-not [string]::IsNullOrWhiteSpace($txtOutputPath.Text)) {
+            $fbd.SelectedPath = $txtOutputPath.Text
+        }
+        if ($fbd.ShowDialog() -eq "OK") {
+            $txtOutputPath.Text = $fbd.SelectedPath
+        }
+    })
+    
+    $btnOK.Add_Click({
+        # Validate paths if they're not empty
+        if (-not [string]::IsNullOrWhiteSpace($txtInputPath.Text) -and -not (Test-Path $txtInputPath.Text)) {
+            Show-MessageBox "Input path does not exist: $($txtInputPath.Text)" "Invalid Path" "Warning"
+            return
+        }
+        
+        if (-not [string]::IsNullOrWhiteSpace($txtOutputPath.Text) -and -not (Test-Path $txtOutputPath.Text)) {
+            Show-MessageBox "Output path does not exist: $($txtOutputPath.Text)" "Invalid Path" "Warning"
+            return
+        }
+        
+        # Save settings
+        $global:Config.Settings.DefaultInputPath = $txtInputPath.Text
+        $global:Config.Settings.DefaultOutputPath = $txtOutputPath.Text
+        $global:Config.Settings.RememberPaths = $chkRememberPaths.Checked
+        $global:Config.Settings.AutoDeleteOriginals = $chkAutoDelete.Checked
+        $global:Config.Settings.ShowDetailedLogs = $chkDetailedLogs.Checked
+        $global:Config.Settings.EnableSoundNotifications = $chkSoundNotifications.Checked
+        
+        if (Save-Settings) {
+            Show-MessageBox "Settings saved successfully." "Settings" "Success"
+            $settingsForm.Close()
+        }
+        else {
+            Show-MessageBox "Failed to save settings. Please try again." "Error" "Error"
+        }
+    })
+
+    Write-Log "Settings dialog displayed"
+    return $settingsForm.ShowDialog()
+}
+
+# ==============================================================================
+# MAIN APPLICATION FORM
+# ==============================================================================
+
+function Initialize-MainForm {
+    Load-Settings
+    
+    $mainForm = New-Object System.Windows.Forms.Form
+    $mainForm.Text = "Excel Utility Tool v$($global:Config.Version) - $($global:Config.Author)"
+    $mainForm.Size = New-Object System.Drawing.Size(450, 400)
+    $mainForm.StartPosition = "CenterScreen"
+    $mainForm.FormBorderStyle = "FixedDialog"
+    $mainForm.MaximizeBox = $false
+    $mainForm.BackColor = $global:Config.Colors.Background
+    $mainForm.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+    
+    # Title
+    $titleLabel = New-Object System.Windows.Forms.Label
+    $titleLabel.Text = "Excel Utility Tool"
+    $titleLabel.Font = New-Object System.Drawing.Font("Segoe UI", 16, [System.Drawing.FontStyle]::Bold)
+    $titleLabel.ForeColor = $global:Config.Colors.Primary
+    $titleLabel.Size = New-Object System.Drawing.Size(360, 30)
+    $titleLabel.Location = New-Object System.Drawing.Point(20, 20)
+    $mainForm.Controls.Add($titleLabel)
+    
+    # Version
+    $versionLabel = New-Object System.Windows.Forms.Label
+    $versionLabel.Text = "Version $($global:Config.Version)"
+    $versionLabel.Size = New-Object System.Drawing.Size(360, 20)
+    $versionLabel.Location = New-Object System.Drawing.Point(20, 50)
+    $versionLabel.ForeColor = $global:Config.Colors.Text
+    $mainForm.Controls.Add($versionLabel)
+
+    # Help button (new addition)
+    $btnHelp = [AccentButton]::new()
+    $btnHelp.Text = "?"
+    $btnHelp.Size = New-Object System.Drawing.Size(32, 32)
+    $btnHelp.Location = New-Object System.Drawing.Point(390, 20)
+    $btnHelp.Font = New-Object System.Drawing.Font("Segoe UI", 12, [System.Drawing.FontStyle]::Bold)
+    $btnHelp.Add_Click({ Show-HelpDialog })
+    $mainForm.Controls.Add($btnHelp)
+
+    # Main buttons
+    $script:btnConvert = [StandardButton]::new()
+    $script:btnConvert.Text = "Convert to Excel (.xlsx)"
+    $script:btnConvert.Size = New-Object System.Drawing.Size(400, 40)
+    $script:btnConvert.Location = New-Object System.Drawing.Point(20, 90)
+    $mainForm.Controls.Add($script:btnConvert)
+    
+    $script:btnRemovePassword = [StandardButton]::new()
+    $script:btnRemovePassword.Text = "Unlock Excel File"
+    $script:btnRemovePassword.Size = New-Object System.Drawing.Size(400, 40)
+    $script:btnRemovePassword.Location = New-Object System.Drawing.Point(20, 140)
+    $mainForm.Controls.Add($script:btnRemovePassword)
+    
+    $script:btnSettings = [StandardButton]::new()
+    $script:btnSettings.Text = "Application Tool Settings"
+    $script:btnSettings.Size = New-Object System.Drawing.Size(400, 40)
+    $script:btnSettings.Location = New-Object System.Drawing.Point(20, 190)
+    $mainForm.Controls.Add($script:btnSettings)
+    
+    # Status area
+    $script:statusLabel = New-Object System.Windows.Forms.Label
+    $script:statusLabel.Text = "Ready!"
+    $script:statusLabel.Size = New-Object System.Drawing.Size(400, 20)
+    $script:statusLabel.Location = New-Object System.Drawing.Point(20, 250)
+    $script:statusLabel.ForeColor = $global:Config.Colors.Success
+    $mainForm.Controls.Add($script:statusLabel)
+    
+    # Progress bar
+    $script:progressBar = New-Object System.Windows.Forms.ProgressBar
+    $script:progressBar.Size = New-Object System.Drawing.Size(400, 25)
+    $script:progressBar.Location = New-Object System.Drawing.Point(20, 280)
+    $script:progressBar.Style = "Continuous"
+    $mainForm.Controls.Add($script:progressBar)
+    
+    # Footer
+    $footerLabel = New-Object System.Windows.Forms.Label
+    $footerLabel.Text = "© $($global:Config.CreatedDate.Split()[0]) $($global:Config.Author). All rights reserved.`nContact: $($global:Config.Email)"
+    $footerLabel.Size = New-Object System.Drawing.Size(400, 40)
+    $footerLabel.Location = New-Object System.Drawing.Point(20, 320)
+    $footerLabel.ForeColor = $global:Config.Colors.Text
+    $footerLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8)
+    $footerLabel.TextAlign = "MiddleCenter"
+    $mainForm.Controls.Add($footerLabel)
