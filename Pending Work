@@ -982,39 +982,30 @@ function Convert-ToExcel {
                 
                 # Handle different file types
                 switch ($extension) {
-                    ".csv" {
-                        $workbook = $excel.Workbooks.Open($file)
-                        $workbook.SaveAs($outputFile, [Microsoft.Office.Interop.Excel.XlFileFormat]::xlOpenXMLWorkbook)
-                        $workbook.Close($true)
-                    }
-                    ".txt" {
-                        $workbook = $excel.Workbooks.OpenText(
-                            $file,
-                            [Microsoft.Office.Interop.Excel.XlPlatform]::xlWindows,
-                            1,  # Start from row 1
-                            [Microsoft.Office.Interop.Excel.XlTextParsingType]::xlDelimited,
-                            [Microsoft.Office.Interop.Excel.XlTextQualifier]::xlTextQualifierDoubleQuote,
-                            $false,  # Consecutive delimiter as one
-                            $true,   # Tab delimiter
-                            $true,   # Comma delimiter
-                            $false,  # Space delimiter
-                            $false,  # Semicolon delimiter
-                            $false   # Other delimiter
-                        )
-                        $workbook.SaveAs($outputFile, [Microsoft.Office.Interop.Excel.XlFileFormat]::xlOpenXMLWorkbook)
-                        $workbook.Close($true)
-                    }
-                    ".xls" {
-                        $workbook = $excel.Workbooks.Open($file)
-                        $workbook.SaveAs($outputFile, [Microsoft.Office.Interop.Excel.XlFileFormat]::xlOpenXMLWorkbook)
-                        $workbook.Close($true)
-                    }
-                    default {
-                        Write-Log "Unsupported file format: $extension" "WARNING"
-                        continue
-                    }
-                }
-                
+    ".csv" {
+        $workbook = $excel.Workbooks.Open($file)
+        $workbook.SaveAs($outputFile, 51)
+        $workbook.Close($true)
+        [System.Runtime.InteropServices.Marshal]::ReleaseComObject($workbook) | Out-Null
+    }
+    ".txt" {
+        $excel.Workbooks.OpenText($file, 2)
+        $workbook = $excel.ActiveWorkbook
+        $workbook.SaveAs($outputFile, 51)
+        $workbook.Close($true)
+        [System.Runtime.InteropServices.Marshal]::ReleaseComObject($workbook) | Out-Null
+    }
+    ".xls" {
+        $workbook = $excel.Workbooks.Open($file)
+        $workbook.SaveAs($outputFile, 51)
+        $workbook.Close($true)
+        [System.Runtime.InteropServices.Marshal]::ReleaseComObject($workbook) | Out-Null
+    }
+    default {
+        Write-Log "Unsupported file format: $extension" "WARNING"
+        continue
+    }
+}               
                 $convertedCount++
                 Write-Log "Converted file: $file to $outputFile" "INFO"
                 
