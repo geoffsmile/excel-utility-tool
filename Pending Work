@@ -1247,7 +1247,6 @@ $mainForm.Add_FormClosing({
 Write-Log "Excel Utility Tool v$($global:Config.Version) started"
 
 return $mainForm
-}
 
 # ==============================================================================
 # APPLICATION ENTRY POINT
