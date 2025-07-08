@@ -958,33 +958,91 @@ function Convert-ToExcel {
 
     $convertedCount = 0
     $totalFiles = $InputFiles.Count
+    $excel = $null
     
-    foreach ($file in $InputFiles) {
-        try {
-            $fileName = [System.IO.Path]::GetFileNameWithoutExtension($file)
-            $extension = [System.IO.Path]::GetExtension($file).ToLower()
-            $outputFile = Join-Path $OutputFolder "$fileName.xlsx"
-            
-            # Update progress
-            $progress = [math]::Round(($convertedCount / $totalFiles) * 100)
-            $script:progressBar.Value = $progress
-            $script:statusLabel.Text = "Converting: $([System.IO.Path]::GetFileName($file))"
-            [System.Windows.Forms.Application]::DoEvents()
-            
-            # TODO: Implement actual conversion logic based on file type
-            Start-Sleep -Milliseconds 500  # Simulate processing
-            
-            $convertedCount++
-            Write-Log "Converted file: $file to $outputFile" "INFO"
-            
-            if ($global:Config.Settings.AutoDeleteOriginals) {
-                Remove-Item $file -Force
-                Write-Log "Deleted original file: $file" "INFO"
+    try {
+        # Create Excel application object
+        $excel = New-Object -ComObject Excel.Application
+        $excel.Visible = $false
+        $excel.DisplayAlerts = $false
+        
+        Write-Log "Excel COM object initialized successfully" "INFO"
+        
+        foreach ($file in $InputFiles) {
+            try {
+                $fileName = [System.IO.Path]::GetFileNameWithoutExtension($file)
+                $extension = [System.IO.Path]::GetExtension($file).ToLower()
+                $outputFile = Join-Path $OutputFolder "$fileName.xlsx"
+                
+                # Update progress
+                $progress = [math]::Round(($convertedCount / $totalFiles) * 100)
+                $script:progressBar.Value = $progress
+                $script:statusLabel.Text = "Converting: $([System.IO.Path]::GetFileName($file))"
+                [System.Windows.Forms.Application]::DoEvents()
+                
+                # Handle different file types
+                switch ($extension) {
+                    ".csv" {
+                        $workbook = $excel.Workbooks.Open($file)
+                        $workbook.SaveAs($outputFile, [Microsoft.Office.Interop.Excel.XlFileFormat]::xlOpenXMLWorkbook)
+                        $workbook.Close($true)
+                    }
+                    ".txt" {
+                        $workbook = $excel.Workbooks.OpenText(
+                            $file,
+                            [Microsoft.Office.Interop.Excel.XlPlatform]::xlWindows,
+                            1,  # Start from row 1
+                            [Microsoft.Office.Interop.Excel.XlTextParsingType]::xlDelimited,
+                            [Microsoft.Office.Interop.Excel.XlTextQualifier]::xlTextQualifierDoubleQuote,
+                            $false,  # Consecutive delimiter as one
+                            $true,   # Tab delimiter
+                            $true,   # Comma delimiter
+                            $false,  # Space delimiter
+                            $false,  # Semicolon delimiter
+                            $false   # Other delimiter
+                        )
+                        $workbook.SaveAs($outputFile, [Microsoft.Office.Interop.Excel.XlFileFormat]::xlOpenXMLWorkbook)
+                        $workbook.Close($true)
+                    }
+                    ".xls" {
+                        $workbook = $excel.Workbooks.Open($file)
+                        $workbook.SaveAs($outputFile, [Microsoft.Office.Interop.Excel.XlFileFormat]::xlOpenXMLWorkbook)
+                        $workbook.Close($true)
+                    }
+                    default {
+                        Write-Log "Unsupported file format: $extension" "WARNING"
+                        continue
+                    }
+                }
+                
+                $convertedCount++
+                Write-Log "Converted file: $file to $outputFile" "INFO"
+                
+                if ($global:Config.Settings.AutoDeleteOriginals) {
+                    # Ensure file handle is released before deletion
+                    [System.GC]::Collect()
+                    [System.GC]::WaitForPendingFinalizers()
+                    
+                    Remove-Item $file -Force
+                    Write-Log "Deleted original file: $file" "INFO"
+                }
+            }
+            catch {
+                Write-Log "Error converting file $file : $($_.Exception.Message)" "ERROR"
+                Show-MessageBox "Failed to convert file: $([System.IO.Path]::GetFileName($file))`n`nError: $($_.Exception.Message)" "Conversion Error" "Error"
             }
         }
-        catch {
-            Write-Log "Error converting file $file : $($_.Exception.Message)" "ERROR"
-            throw
+    }
+    catch {
+        Write-Log "Error initializing Excel: $($_.Exception.Message)" "ERROR"
+        throw
+    }
+    finally {
+        if ($excel) {
+            $excel.Quit()
+            [System.Runtime.Interopservices.Marshal]::ReleaseComObject($excel) | Out-Null
+            [System.GC]::Collect()
+            [System.GC]::WaitForPendingFinalizers()
         }
     }
     
@@ -1009,32 +1067,80 @@ function Remove-ExcelPassword {
 
     $processedCount = 0
     $totalFiles = $InputFiles.Count
+    $excel = $null
     
-    foreach ($file in $InputFiles) {
-        try {
-            $fileName = [System.IO.Path]::GetFileNameWithoutExtension($file)
-            $outputFile = Join-Path $OutputFolder "$fileName`_unlocked.xlsx"
-            
-            # Update progress
-            $progress = [math]::Round(($processedCount / $totalFiles) * 100)
-            $script:progressBar.Value = $progress
-            $script:statusLabel.Text = "Unlocking: $([System.IO.Path]::GetFileName($file))"
-            [System.Windows.Forms.Application]::DoEvents()
-            
-            # TODO: Implement actual Excel password removal logic using COM objects
-            Start-Sleep -Milliseconds 500  # Simulate processing
-            
-            $processedCount++
-            Write-Log "Removed password from file: $file" "INFO"
-            
-            if ($global:Config.Settings.AutoDeleteOriginals) {
-                Remove-Item $file -Force
-                Write-Log "Deleted original file: $file" "INFO"
+    try {
+        # Create Excel application object
+        $excel = New-Object -ComObject Excel.Application
+        $excel.Visible = $false
+        $excel.DisplayAlerts = $false
+        
+        Write-Log "Excel COM object initialized successfully" "INFO"
+        
+        foreach ($file in $InputFiles) {
+            try {
+                $fileName = [System.IO.Path]::GetFileNameWithoutExtension($file)
+                $outputFile = Join-Path $OutputFolder "$fileName`_unlocked.xlsx"
+                
+                # Update progress
+                $progress = [math]::Round(($processedCount / $totalFiles) * 100)
+                $script:progressBar.Value = $progress
+                $script:statusLabel.Text = "Unlocking: $([System.IO.Path]::GetFileName($file))"
+                [System.Windows.Forms.Application]::DoEvents()
+                
+                # Open workbook with password
+                $workbook = $excel.Workbooks.Open(
+                    $file,
+                    0,          # UpdateLinks
+                    $false,     # ReadOnly
+                    [Type]::Missing, # Format
+                    $Password   # Password
+                )
+                
+                # Save without password protection
+                $workbook.SaveAs(
+                    $outputFile,
+                    [Microsoft.Office.Interop.Excel.XlFileFormat]::xlOpenXMLWorkbook,
+                    "",         # Password
+                    "",         # WriteResPassword
+                    $false,     # ReadOnlyRecommended
+                    $false,     # CreateBackup
+                    [Microsoft.Office.Interop.Excel.XlSaveAsAccessMode]::xlNoChange,
+                    $false,     # ConflictResolution
+                    $true,      # AddToMru
+                    $false      # TextCodepage
+                )
+                
+                $workbook.Close($true)
+                
+                $processedCount++
+                Write-Log "Removed password from file: $file" "INFO"
+                
+                if ($global:Config.Settings.AutoDeleteOriginals) {
+                    # Ensure file handle is released before deletion
+                    [System.GC]::Collect()
+                    [System.GC]::WaitForPendingFinalizers()
+                    
+                    Remove-Item $file -Force
+                    Write-Log "Deleted original file: $file" "INFO"
+                }
+            }
+            catch {
+                Write-Log "Error removing password from $file : $($_.Exception.Message)" "ERROR"
+                Show-MessageBox "Failed to unlock file: $([System.IO.Path]::GetFileName($file))`n`nError: $($_.Exception.Message)" "Password Removal Error" "Error"
             }
         }
-        catch {
-            Write-Log "Error removing password from $file : $($_.Exception.Message)" "ERROR"
-            throw
+    }
+    catch {
+        Write-Log "Error initializing Excel: $($_.Exception.Message)" "ERROR"
+        throw
+    }
+    finally {
+        if ($excel) {
+            $excel.Quit()
+            [System.Runtime.Interopservices.Marshal]::ReleaseComObject($excel) | Out-Null
+            [System.GC]::Collect()
+            [System.GC]::WaitForPendingFinalizers()
         }
     }
     
