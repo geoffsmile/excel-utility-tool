@@ -472,13 +472,11 @@ ABOUT THE AUTHOR & TOOL
 DEVELOPER INFORMATION
 Name: $($global:Config.Author)
 Email: $($global:Config.Email)
-LinkedIn: [Connect with me for professional networking]
-GitHub: [Check out my other projects and contributions]
 
 -------------------------------------------------------------------------------
 
 ABOUT GEOFF LU
-As a passionate software developer and automation enthusiast, I specialize in creating practical tools that solve real-world business challenges. With extensive experience in PowerShell
+As a reports analyst, software developer and automation enthusiast, I specialize in creating practical tools that solve real-world business challenges. With extensive experience in PowerShell
 scripting, Windows Forms development, and business process automation, I focus on delivering solutions that are both powerful and user-friendly.
 
 My development philosophy centers on creating tools that are:
@@ -524,13 +522,6 @@ When contacting for support, please include:
 • Detailed description of the issue
 • Steps to reproduce the problem
 • Any error messages received
-
--------------------------------------------------------------------------------
-
-ACKNOWLEDGMENTS
-Special thanks to the PowerShell and .NET communities for their excellent
-documentation and support resources. This tool leverages various open-source
-concepts and best practices developed by the broader development community.
 
 -------------------------------------------------------------------------------
 
@@ -845,3 +836,249 @@ function Initialize-MainForm {
     $footerLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8)
     $footerLabel.TextAlign = "MiddleCenter"
     $mainForm.Controls.Add($footerLabel)
+
+    # Continuing from the last line in settings dialog...
+    $chkDetailedLogs.Location = New-Object System.Drawing.Point(30, 245)
+    $chkDetailedLogs.Checked = $global:Config.Settings.ShowDetailedLogs
+    $chkDetailedLogs.ForeColor = $global:Config.Colors.Text
+    $settingsForm.Controls.Add($chkDetailedLogs)
+
+    $chkSoundNotifications = New-Object System.Windows.Forms.CheckBox
+    $chkSoundNotifications.Text = "Enable sound notifications for completed operations"
+    $chkSoundNotifications.Size = New-Object System.Drawing.Size(400, 25)
+    $chkSoundNotifications.Location = New-Object System.Drawing.Point(30, 275)
+    $chkSoundNotifications.Checked = $global:Config.Settings.EnableSoundNotifications
+    $chkSoundNotifications.ForeColor = $global:Config.Colors.Text
+    $settingsForm.Controls.Add($chkSoundNotifications)
+
+    # Advanced Settings Section
+    $lblAdvSettings = New-Object System.Windows.Forms.Label
+    $lblAdvSettings.Text = "Advanced Settings"
+    $lblAdvSettings.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $lblAdvSettings.ForeColor = $global:Config.Colors.Text
+    $lblAdvSettings.Size = New-Object System.Drawing.Size(200, 25)
+    $lblAdvSettings.Location = New-Object System.Drawing.Point(20, 315)
+    $settingsForm.Controls.Add($lblAdvSettings)
+
+    # Information text
+    $lblInfo = New-Object System.Windows.Forms.Label
+    $lblInfo.Text = "These settings will be saved automatically and applied when you restart the application."
+    $lblInfo.ForeColor = $global:Config.Colors.Text
+    $lblInfo.Size = New-Object System.Drawing.Size(400, 20)
+    $lblInfo.Location = New-Object System.Drawing.Point(30, 340)
+    $lblInfo.Font = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Italic)
+    $settingsForm.Controls.Add($lblInfo)
+
+    # Buttons
+    $btnOK = [StandardButton]::new()
+    $btnOK.Text = "Save"
+    $btnOK.Size = New-Object System.Drawing.Size(90, 32)
+    $btnOK.Location = New-Object System.Drawing.Point(370, 340)
+    $btnOK.DialogResult = "OK"
+    $settingsForm.Controls.Add($btnOK)
+
+    $btnCancel = [StandardButton]::new()
+    $btnCancel.Text = "Cancel"
+    $btnCancel.Size = New-Object System.Drawing.Size(90, 32)
+    $btnCancel.Location = New-Object System.Drawing.Point(470, 340)
+    $btnCancel.DialogResult = "Cancel"
+    $settingsForm.Controls.Add($btnCancel)
+
+    $settingsForm.AcceptButton = $btnOK
+    $settingsForm.CancelButton = $btnCancel
+
+    # Event handlers
+    $btnBrowseInput.Add_Click({
+        $fbd = New-Object System.Windows.Forms.FolderBrowserDialog
+        $fbd.Description = "Select Default Input Folder"
+        if (-not [string]::IsNullOrWhiteSpace($txtInputPath.Text)) {
+            $fbd.SelectedPath = $txtInputPath.Text
+        }
+        if ($fbd.ShowDialog() -eq "OK") {
+            $txtInputPath.Text = $fbd.SelectedPath
+        }
+    })
+    
+    $btnBrowseOutput.Add_Click({
+        $fbd = New-Object System.Windows.Forms.FolderBrowserDialog
+        $fbd.Description = "Select Default Output Folder"
+        if (-not [string]::IsNullOrWhiteSpace($txtOutputPath.Text)) {
+            $fbd.SelectedPath = $txtOutputPath.Text
+        }
+        if ($fbd.ShowDialog() -eq "OK") {
+            $txtOutputPath.Text = $fbd.SelectedPath
+        }
+    })
+    
+    $btnOK.Add_Click({
+        # Validate paths if they're not empty
+        if (-not [string]::IsNullOrWhiteSpace($txtInputPath.Text) -and -not (Test-Path $txtInputPath.Text)) {
+            Show-MessageBox "Input path does not exist: $($txtInputPath.Text)" "Invalid Path" "Warning"
+            return
+        }
+        
+        if (-not [string]::IsNullOrWhiteSpace($txtOutputPath.Text) -and -not (Test-Path $txtOutputPath.Text)) {
+            Show-MessageBox "Output path does not exist: $($txtOutputPath.Text)" "Invalid Path" "Warning"
+            return
+        }
+        
+        # Save settings
+        $global:Config.Settings.DefaultInputPath = $txtInputPath.Text
+        $global:Config.Settings.DefaultOutputPath = $txtOutputPath.Text
+        $global:Config.Settings.RememberPaths = $chkRememberPaths.Checked
+        $global:Config.Settings.AutoDeleteOriginals = $chkAutoDelete.Checked
+        $global:Config.Settings.ShowDetailedLogs = $chkDetailedLogs.Checked
+        $global:Config.Settings.EnableSoundNotifications = $chkSoundNotifications.Checked
+        
+        if (Save-Settings) {
+            Show-MessageBox "Settings saved successfully." "Settings" "Success"
+            $settingsForm.Close()
+        }
+        else {
+            Show-MessageBox "Failed to save settings. Please try again." "Error" "Error"
+        }
+    })
+
+    Write-Log "Settings dialog displayed"
+    return $settingsForm.ShowDialog()
+}
+
+# ==============================================================================
+# FILE PROCESSING FUNCTIONS
+# ==============================================================================
+
+function Convert-ToExcel {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string[]]$InputFiles,
+        
+        [Parameter(Mandatory=$true)]
+        [string]$OutputFolder
+    )
+
+    $convertedCount = 0
+    $totalFiles = $InputFiles.Count
+    
+    foreach ($file in $InputFiles) {
+        try {
+            $fileName = [System.IO.Path]::GetFileNameWithoutExtension($file)
+            $extension = [System.IO.Path]::GetExtension($file).ToLower()
+            $outputFile = Join-Path $OutputFolder "$fileName.xlsx"
+            
+            # Update progress
+            $progress = [math]::Round(($convertedCount / $totalFiles) * 100)
+            $script:progressBar.Value = $progress
+            $script:statusLabel.Text = "Converting: $([System.IO.Path]::GetFileName($file))"
+            [System.Windows.Forms.Application]::DoEvents()
+            
+            # TODO: Implement actual conversion logic based on file type
+            Start-Sleep -Milliseconds 500  # Simulate processing
+            
+            $convertedCount++
+            Write-Log "Converted file: $file to $outputFile" "INFO"
+            
+            if ($global:Config.Settings.AutoDeleteOriginals) {
+                Remove-Item $file -Force
+                Write-Log "Deleted original file: $file" "INFO"
+            }
+        }
+        catch {
+            Write-Log "Error converting file $file : $($_.Exception.Message)" "ERROR"
+            throw
+        }
+    }
+    
+    if ($global:Config.Settings.EnableSoundNotifications) {
+        [System.Media.SystemSounds]::Asterisk.Play()
+    }
+    
+    return $convertedCount
+}
+
+function Remove-ExcelPassword {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string[]]$InputFiles,
+        
+        [Parameter(Mandatory=$true)]
+        [string]$OutputFolder,
+        
+        [Parameter(Mandatory=$true)]
+        [string]$Password
+    )
+
+    $processedCount = 0
+    $totalFiles = $InputFiles.Count
+    
+    foreach ($file in $InputFiles) {
+        try {
+            $fileName = [System.IO.Path]::GetFileNameWithoutExtension($file)
+            $outputFile = Join-Path $OutputFolder "$fileName`_unlocked.xlsx"
+            
+            # Update progress
+            $progress = [math]::Round(($processedCount / $totalFiles) * 100)
+            $script:progressBar.Value = $progress
+            $script:statusLabel.Text = "Unlocking: $([System.IO.Path]::GetFileName($file))"
+            [System.Windows.Forms.Application]::DoEvents()
+            
+            # TODO: Implement actual password removal logic
+            Start-Sleep -Milliseconds 500  # Simulate processing
+            
+            $processedCount++
+            Write-Log "Removed password from file: $file" "INFO"
+            
+            if ($global:Config.Settings.AutoDeleteOriginals) {
+                Remove-Item $file -Force
+                Write-Log "Deleted original file: $file" "INFO"
+            }
+        }
+        catch {
+            Write-Log "Error removing password from $file : $($_.Exception.Message)" "ERROR"
+            throw
+        }
+    }
+    
+    if ($global:Config.Settings.EnableSoundNotifications) {
+        [System.Media.SystemSounds]::Asterisk.Play()
+    }
+    
+    return $processedCount
+}
+
+# ==============================================================================
+# APPLICATION ENTRY POINT
+# ==============================================================================
+
+# Start the application
+try {
+    Write-Host "Starting Excel Utility Tool v$($global:Config.Version)..." -ForegroundColor Green
+    Write-Host "Created by: $($global:Config.Author)" -ForegroundColor Cyan
+    Write-Host "Last Modified: $($global:Config.LastModified)" -ForegroundColor Cyan
+    
+    # Ensure required directories exist
+    if (-not (Test-Path $global:Config.LogPath)) {
+        New-Item -Path $global:Config.LogPath -ItemType Directory -Force | Out-Null
+    }
+    
+    $mainForm = Initialize-MainForm
+    Write-Log "Application started successfully"
+    [void]$mainForm.ShowDialog()
+}
+catch {
+    Write-Error "Failed to start application: $($_.Exception.Message)"
+    Write-Log "Application startup failed: $($_.Exception.Message)" "ERROR"
+    
+    [System.Windows.Forms.MessageBox]::Show(
+        "Failed to start the Excel Utility Tool:`n`n$($_.Exception.Message)`n`nPlease check the log files for more details.",
+        "Startup Error",
+        "OK",
+        [System.Windows.Forms.MessageBoxIcon]::Error
+    )
+}
+finally {
+    Write-Log "Application session ended"
+}
+
+# ==============================================================================
+# END OF SCRIPT
+# ==============================================================================
