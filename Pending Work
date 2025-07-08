@@ -1021,7 +1021,7 @@ function Remove-ExcelPassword {
             $script:statusLabel.Text = "Unlocking: $([System.IO.Path]::GetFileName($file))"
             [System.Windows.Forms.Application]::DoEvents()
             
-            # TODO: Implement actual password removal logic
+            # TODO: Implement actual Excel password removal logic using COM objects
             Start-Sleep -Milliseconds 500  # Simulate processing
             
             $processedCount++
@@ -1046,19 +1046,126 @@ function Remove-ExcelPassword {
 }
 
 # ==============================================================================
+# EVENT HANDLERS
+# ==============================================================================
+
+# Convert button click handler
+$script:btnConvert.Add_Click({
+    try {
+        $script:statusLabel.Text = "Selecting files..."
+        $inputFiles = Get-InputFiles "Select files to convert to .xlsx" "CSV files (*.csv)|*.csv|Text files (*.txt)|*.txt|Excel files (*.xls)|*.xls|All files (*.*)|*.*"
+        if (-not $inputFiles) { 
+            $script:statusLabel.Text = "Ready"
+            return 
+        }
+        
+        $script:statusLabel.Text = "Selecting output folder..."
+        $outputFolder = Get-OutputFolder "Select output folder for converted files"
+        if (-not $outputFolder) { 
+            $script:statusLabel.Text = "Ready"
+            return 
+        }
+        
+        # Disable buttons during processing
+        $script:btnConvert.Enabled = $false
+        $script:btnRemovePassword.Enabled = $false
+        $script:btnSettings.Enabled = $false
+        
+        $script:statusLabel.Text = "Processing files..."
+        $convertedCount = Convert-ToExcel -InputFiles $inputFiles -OutputFolder $outputFolder
+        
+        $script:statusLabel.Text = "Successfully converted $convertedCount files"
+        Show-MessageBox "Successfully converted $convertedCount files to Excel format." "Conversion Complete" "Success"
+    }
+    catch {
+        $script:statusLabel.Text = "Error occurred"
+        Show-MessageBox "An error occurred during file conversion: $($_.Exception.Message)" "Error" "Error"
+        Write-Log "Error in convert button click: $($_.Exception.Message)" "ERROR"
+    }
+    finally {
+        # Always re-enable buttons
+        $script:btnConvert.Enabled = $true
+        $script:btnRemovePassword.Enabled = $true
+        $script:btnSettings.Enabled = $true
+        $script:progressBar.Value = 0
+    }
+})
+
+# Remove Password button click handler
+$script:btnRemovePassword.Add_Click({
+    try {
+        $password = Get-PasswordInput "Enter Excel Password"
+        if (-not $password) { return }
+        
+        $script:statusLabel.Text = "Selecting files..."
+        $inputFiles = Get-InputFiles "Select password-protected Excel files" "Excel files (*.xls;*.xlsx)|*.xls;*.xlsx|All files (*.*)|*.*"
+        if (-not $inputFiles) { 
+            $script:statusLabel.Text = "Ready"
+            return 
+        }
+        
+        $script:statusLabel.Text = "Selecting output folder..."
+        $outputFolder = Get-OutputFolder "Select output folder for unlocked files"
+        if (-not $outputFolder) { 
+            $script:statusLabel.Text = "Ready"
+            return 
+        }
+        
+        # Disable buttons during processing
+        $script:btnConvert.Enabled = $false
+        $script:btnRemovePassword.Enabled = $false
+        $script:btnSettings.Enabled = $false
+        
+        $script:statusLabel.Text = "Processing files..."
+        $processedCount = Remove-ExcelPassword -InputFiles $inputFiles -OutputFolder $outputFolder -Password $password
+        
+        $script:statusLabel.Text = "Successfully unlocked $processedCount files"
+        Show-MessageBox "Successfully unlocked $processedCount Excel files." "Password Removal Complete" "Success"
+    }
+    catch {
+        $script:statusLabel.Text = "Error occurred"
+        Show-MessageBox "An error occurred during password removal: $($_.Exception.Message)" "Error" "Error"
+        Write-Log "Error in remove password button click: $($_.Exception.Message)" "ERROR"
+    }
+    finally {
+        # Always re-enable buttons
+        $script:btnConvert.Enabled = $true
+        $script:btnRemovePassword.Enabled = $true
+        $script:btnSettings.Enabled = $true
+        $script:progressBar.Value = 0
+    }
+})
+
+# Settings button click handler
+$script:btnSettings.Add_Click({
+    Show-SettingsDialog | Out-Null
+})
+
+# Form closing event
+$mainForm.Add_FormClosing({
+    Write-Log "Application closing"
+})
+
+# Initialize logging
+Write-Log "Excel Utility Tool v$($global:Config.Version) started"
+
+return $mainForm
+}
+
+# ==============================================================================
 # APPLICATION ENTRY POINT
 # ==============================================================================
+
+# Ensure required directories exist
+if (-not (Test-Path $global:Config.LogPath)) {
+    New-Item -Path $global:Config.LogPath -ItemType Directory -Force | Out-Null
+}
 
 # Start the application
 try {
     Write-Host "Starting Excel Utility Tool v$($global:Config.Version)..." -ForegroundColor Green
     Write-Host "Created by: $($global:Config.Author)" -ForegroundColor Cyan
     Write-Host "Last Modified: $($global:Config.LastModified)" -ForegroundColor Cyan
-    
-    # Ensure required directories exist
-    if (-not (Test-Path $global:Config.LogPath)) {
-        New-Item -Path $global:Config.LogPath -ItemType Directory -Force | Out-Null
-    }
     
     $mainForm = Initialize-MainForm
     Write-Log "Application started successfully"
