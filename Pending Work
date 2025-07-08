@@ -1249,20 +1249,190 @@ Write-Log "Excel Utility Tool v$($global:Config.Version) started"
 return $mainForm
 
 # ==============================================================================
+# FILE PROCESSING FUNCTIONS
+# ==============================================================================
+
+function Convert-ToExcel {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string[]]$InputFiles,
+        [Parameter(Mandatory=$true)]
+        [string]$OutputFolder
+    )
+
+    $convertedCount = 0
+    $totalFiles = $InputFiles.Count
+    $excel = $null
+
+    try {
+        # Create Excel application object
+        $excel = New-Object -ComObject Excel.Application
+        $excel.Visible = $false
+        $excel.DisplayAlerts = $false
+
+        Write-Log "Excel COM object initialized successfully" "INFO"
+
+        foreach ($file in $InputFiles) {
+            try {
+                $fileName = [System.IO.Path]::GetFileNameWithoutExtension($file)
+                $extension = [System.IO.Path]::GetExtension($file).ToLower()
+                $outputFile = Join-Path $OutputFolder "$fileName.xlsx"
+
+                # Update progress
+                $progress = [math]::Round((($convertedCount) / $totalFiles) * 100)
+                $script:progressBar.Value = $progress
+                $script:statusLabel.Text = "Converting: $([System.IO.Path]::GetFileName($file))"
+                [System.Windows.Forms.Application]::DoEvents()
+
+                switch ($extension) {
+                    ".csv" {
+                        $workbook = $excel.Workbooks.Open($file)
+                        $workbook.SaveAs($outputFile, 51)
+                        $workbook.Close($true)
+                        [System.Runtime.InteropServices.Marshal]::ReleaseComObject($workbook) | Out-Null
+                    }
+                    ".txt" {
+                        $excel.Workbooks.OpenText($file, 2)
+                        $workbook = $excel.ActiveWorkbook
+                        $workbook.SaveAs($outputFile, 51)
+                        $workbook.Close($true)
+                        [System.Runtime.InteropServices.Marshal]::ReleaseComObject($workbook) | Out-Null
+                    }
+                    ".xls" {
+                        $workbook = $excel.Workbooks.Open($file)
+                        $workbook.SaveAs($outputFile, 51)
+                        $workbook.Close($true)
+                        [System.Runtime.InteropServices.Marshal]::ReleaseComObject($workbook) | Out-Null
+                    }
+                    default {
+                        Write-Log "Unsupported file format: $extension" "WARNING"
+                        continue
+                    }
+                }
+
+                $convertedCount++
+                Write-Log "Converted file: $file to $outputFile" "INFO"
+
+                if ($global:Config.Settings.AutoDeleteOriginals) {
+                    [System.GC]::Collect()
+                    [System.GC]::WaitForPendingFinalizers()
+                    Remove-Item $file -Force
+                    Write-Log "Deleted original file: $file" "INFO"
+                }
+            }
+            catch {
+                Write-Log "Error converting file $file : $($_.Exception.Message)" "ERROR"
+                Show-MessageBox "Failed to convert file: $([System.IO.Path]::GetFileName($file))`n`nError: $($_.Exception.Message)" "Conversion Error" "Error"
+            }
+        }
+    }
+    catch {
+        Write-Log "Error initializing Excel: $($_.Exception.Message)" "ERROR"
+        throw
+    }
+    finally {
+        if ($excel) {
+            $excel.Quit()
+            [System.Runtime.InteropServices.Marshal]::ReleaseComObject($excel) | Out-Null
+            [System.GC]::Collect()
+            [System.GC]::WaitForPendingFinalizers()
+        }
+    }
+
+    if ($global:Config.Settings.EnableSoundNotifications) {
+        [System.Media.SystemSounds]::Asterisk.Play()
+    }
+
+    return $convertedCount
+}
+
+function Remove-ExcelPassword {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string[]]$InputFiles,
+        [Parameter(Mandatory=$true)]
+        [string]$OutputFolder,
+        [Parameter(Mandatory=$true)]
+        [string]$Password
+    )
+
+    $processedCount = 0
+    $totalFiles = $InputFiles.Count
+    $excel = $null
+
+    try {
+        $excel = New-Object -ComObject Excel.Application
+        $excel.Visible = $false
+        $excel.DisplayAlerts = $false
+
+        Write-Log "Excel COM object initialized successfully" "INFO"
+
+        foreach ($file in $InputFiles) {
+            try {
+                $fileName = [System.IO.Path]::GetFileNameWithoutExtension($file)
+                $outputFile = Join-Path $OutputFolder "$fileName`_unlocked.xlsx"
+
+                $progress = [math]::Round((($processedCount) / $totalFiles) * 100)
+                $script:progressBar.Value = $progress
+                $script:statusLabel.Text = "Unlocking: $([System.IO.Path]::GetFileName($file))"
+                [System.Windows.Forms.Application]::DoEvents()
+
+                $workbook = $excel.Workbooks.Open(
+                    $file, 0, $false, [Type]::Missing, $Password
+                )
+                $workbook.SaveAs($outputFile, 51, "", "", $false, $false)
+                $workbook.Close($true)
+                [System.Runtime.InteropServices.Marshal]::ReleaseComObject($workbook) | Out-Null
+
+                $processedCount++
+                Write-Log "Removed password from file: $file" "INFO"
+
+                if ($global:Config.Settings.AutoDeleteOriginals) {
+                    [System.GC]::Collect()
+                    [System.GC]::WaitForPendingFinalizers()
+                    Remove-Item $file -Force
+                    Write-Log "Deleted original file: $file" "INFO"
+                }
+            }
+            catch {
+                Write-Log "Error removing password from $file : $($_.Exception.Message)" "ERROR"
+                Show-MessageBox "Failed to unlock file: $([System.IO.Path]::GetFileName($file))`n`nError: $($_.Exception.Message)" "Password Removal Error" "Error"
+            }
+        }
+    }
+    catch {
+        Write-Log "Error initializing Excel: $($_.Exception.Message)" "ERROR"
+        throw
+    }
+    finally {
+        if ($excel) {
+            $excel.Quit()
+            [System.Runtime.InteropServices.Marshal]::ReleaseComObject($excel) | Out-Null
+            [System.GC]::Collect()
+            [System.GC]::WaitForPendingFinalizers()
+        }
+    }
+
+    if ($global:Config.Settings.EnableSoundNotifications) {
+        [System.Media.SystemSounds]::Asterisk.Play()
+    }
+
+    return $processedCount
+}
+
+# ==============================================================================
 # APPLICATION ENTRY POINT
 # ==============================================================================
 
-# Ensure required directories exist
-if (-not (Test-Path $global:Config.LogPath)) {
-    New-Item -Path $global:Config.LogPath -ItemType Directory -Force | Out-Null
-}
-
-# Start the application
 try {
     Write-Host "Starting Excel Utility Tool v$($global:Config.Version)..." -ForegroundColor Green
     Write-Host "Created by: $($global:Config.Author)" -ForegroundColor Cyan
     Write-Host "Last Modified: $($global:Config.LastModified)" -ForegroundColor Cyan
-    
+
+    if (-not (Test-Path $global:Config.LogPath)) {
+        New-Item -Path $global:Config.LogPath -ItemType Directory -Force | Out-Null
+    }
+
     $mainForm = Initialize-MainForm
     Write-Log "Application started successfully"
     [void]$mainForm.ShowDialog()
@@ -1270,7 +1440,6 @@ try {
 catch {
     Write-Error "Failed to start application: $($_.Exception.Message)"
     Write-Log "Application startup failed: $($_.Exception.Message)" "ERROR"
-    
     [System.Windows.Forms.MessageBox]::Show(
         "Failed to start the Excel Utility Tool:`n`n$($_.Exception.Message)`n`nPlease check the log files for more details.",
         "Startup Error",
