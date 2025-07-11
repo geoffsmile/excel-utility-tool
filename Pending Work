@@ -1,123 +1,102 @@
 # ==============================================================================
 # Excel Utility Tool - Version 4
-# Author: Geoff Lu
-# Contact: geoffsmile@gmail.com
+# Author: Geoff Lu | geoffsmile@gmail.com
 # Created: July 1, 2025
-# Last Modified: July 7, 2025
-# Description: Enhanced version with help system and UI improvements
+# Last Modified: July 11, 2025
+# Description:
+#       The Excel Utility Tool provides a user-friendly interface for common 
+#       Excel file operations. It supports converting CSV, TXT, and XLS files 
+#       to the modern XLSX format and unlocking password-protected files. 
+#       The tool features a settings panel for customization, detailed logging, 
+#       and a comprehensive help system.
 # ==============================================================================
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-# ==============================================================================
-# GLOBAL CONFIGURATION
-# ==============================================================================
-
+# --- Global Configuration ---
 $global:Config = @{
     Version = "4.0"
     Colors = @{
-        Primary = [System.Drawing.Color]::FromArgb(0, 71, 187)     # #0047BB
-        Secondary = [System.Drawing.Color]::White                  # #FFFFFF
-        Text = [System.Drawing.Color]::FromArgb(64, 64, 64)        # #404040
-        Success = [System.Drawing.Color]::FromArgb(76, 175, 80)    # Green
-        Warning = [System.Drawing.Color]::FromArgb(255, 193, 7)    # Amber
-        Error = [System.Drawing.Color]::FromArgb(244, 67, 54)      # Red
+        Primary   = [System.Drawing.Color]::FromArgb(0, 71, 187)
+        Secondary = [System.Drawing.Color]::White
+        Text      = [System.Drawing.Color]::FromArgb(64, 64, 64)
+        Success   = [System.Drawing.Color]::FromArgb(76, 175, 80)
+        Warning   = [System.Drawing.Color]::FromArgb(255, 193, 7)
+        Error     = [System.Drawing.Color]::FromArgb(244, 67, 54)
     }
     Settings = @{
-        DefaultInputPath = ""
-        DefaultOutputPath = ""
-        RememberPaths = $true
-        AutoDeleteOriginals = $false
-        ShowDetailedLogs = $false
-        SoundNotifications = $true
+        DefaultInputPath     = ""
+        DefaultOutputPath    = ""
+        RememberPaths        = $true
+        AutoDeleteOriginals  = $false
+        ShowDetailedLogs     = $false
+        SoundNotifications   = $true
     }
     SettingsPath = Join-Path $PSScriptRoot "settings.json"
-    LogPath = Join-Path $PSScriptRoot "logs"
+    LogPath      = Join-Path $PSScriptRoot "logs"
 }
 
-# ==============================================================================
-# UTILITY FUNCTIONS
-# ==============================================================================
+# --- Utility Functions ---
 
 function Write-Log {
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$Message,
-        
-        [ValidateSet("INFO","WARNING","ERROR")]
-        [string]$Level = "INFO"
-    )
-    
+    param([string]$Message, [ValidateSet("INFO","WARNING","ERROR")][string]$Level = "INFO")
     try {
         if (-not (Test-Path $global:Config.LogPath)) {
             New-Item -Path $global:Config.LogPath -ItemType Directory -Force | Out-Null
         }
-        
         $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
         $logFile = Join-Path $global:Config.LogPath "excel_utility_$(Get-Date -Format 'yyyy-MM-dd').log"
-        $logEntry = "[$timestamp] [$Level] $Message"
-        
+        $logEntry = "[$timestamp][$Level] $Message"
         Add-Content -Path $logFile -Value $logEntry
-        
         if ($global:Config.Settings.ShowDetailedLogs) {
-            Write-Host $logEntry -ForegroundColor $(if($Level -eq "ERROR"){"Red"}elseif($Level -eq "WARNING"){"Yellow"}else{"Gray"})
+            $color = switch ($Level) { "ERROR" { "Red" } "WARNING" { "Yellow" } default { "Gray" } }
+            Write-Host $logEntry -ForegroundColor $color
         }
-    }
-    catch {
-        Write-Host "Failed to write to log: $($_.Exception.Message)" -ForegroundColor Red
+    } catch {
+        Write-Host "Log write failed: $($_.Exception.Message)" -ForegroundColor Red
     }
 }
 
 function Load-Settings {
     try {
         if (Test-Path $global:Config.SettingsPath) {
-            $jsonContent = Get-Content $global:Config.SettingsPath -Raw | ConvertFrom-Json
-            foreach ($key in $jsonContent.PSObject.Properties.Name) {
+            $json = Get-Content $global:Config.SettingsPath -Raw | ConvertFrom-Json
+            foreach ($key in $json.PSObject.Properties.Name) {
                 if ($global:Config.Settings.ContainsKey($key)) {
-                    $global:Config.Settings[$key] = $jsonContent.$key
+                    $global:Config.Settings[$key] = $json.$key
                 }
             }
-            Write-Log "Settings loaded successfully"
+            Write-Log "Settings loaded"
         }
-    }
-    catch {
-        Write-Log "Error loading settings: $($_.Exception.Message)" "ERROR"
-    }
+    } catch { Write-Log "Failed to load settings: $($_.Exception.Message)" "ERROR" }
 }
 
 function Save-Settings {
     try {
         $global:Config.Settings | ConvertTo-Json | Set-Content $global:Config.SettingsPath
-        Write-Log "Settings saved successfully"
+        Write-Log "Settings saved"
         return $true
-    }
-    catch {
-        Write-Log "Error saving settings: $($_.Exception.Message)" "ERROR"
+    } catch {
+        Write-Log "Saving settings failed: $($_.Exception.Message)" "ERROR"
         return $false
     }
 }
 
-function Test-PathValid {
-    param([string]$Path)
-    return -not [string]::IsNullOrWhiteSpace($Path) -and (Test-Path $Path)
+function Path-Valid([string]$Path) {
+    return (-not [string]::IsNullOrWhiteSpace($Path)) -and (Test-Path $Path)
 }
 
-function Play-SuccessSound {
+function Play-Sound($Type) {
     if ($global:Config.Settings.SoundNotifications) {
-        [System.Media.SystemSounds]::Exclamation.Play()
+        switch ($Type) {
+            "Success" { [System.Media.SystemSounds]::Exclamation.Play() }
+            "Error"   { [System.Media.SystemSounds]::Hand.Play() }
+        }
     }
 }
 
-function Play-ErrorSound {
-    if ($global:Config.Settings.SoundNotifications) {
-        [System.Media.SystemSounds]::Hand.Play()
-    }
-}
-
-# ==============================================================================
-# UI COMPONENTS
-# ==============================================================================
+# --- UI Helper Functions ---
 
 class StandardButton : System.Windows.Forms.Button {
     StandardButton() {
@@ -129,782 +108,360 @@ class StandardButton : System.Windows.Forms.Button {
     }
 }
 
-function Show-MessageBox {
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$Message,
-        
-        [string]$Title = "Excel Utility",
-        
-        [ValidateSet("Information","Warning","Error")]
-        [string]$Type = "Information"
-    )
-    
-    $iconType = switch ($Type) {
-        "Error" { 
-            Play-ErrorSound
-            [System.Windows.Forms.MessageBoxIcon]::Error 
-        }
-        "Warning" { 
-            Play-ErrorSound
-            [System.Windows.Forms.MessageBoxIcon]::Warning 
-        }
-        default { 
-            [System.Windows.Forms.MessageBoxIcon]::Information 
-        }
+function Show-MessageBox($Message, $Title = "Excel Utility", $Type = "Information") {
+    $icon = switch ($Type) {
+        "Error"   { Play-Sound "Error";   [System.Windows.Forms.MessageBoxIcon]::Error }
+        "Warning" { Play-Sound "Error";   [System.Windows.Forms.MessageBoxIcon]::Warning }
+        default   {                      [System.Windows.Forms.MessageBoxIcon]::Information }
     }
-    
-    return [System.Windows.Forms.MessageBox]::Show($Message, $Title, "OK", $iconType)
+    [System.Windows.Forms.MessageBox]::Show($Message, $Title, "OK", $icon)
 }
 
 function Show-HelpDialog {
-    $helpForm = New-Object System.Windows.Forms.Form
-    $helpForm.Text = "Excel Utility Tool - Help"
-    $helpForm.Size = New-Object System.Drawing.Size(800, 600)
-    $helpForm.StartPosition = "CenterParent"
-    $helpForm.FormBorderStyle = "FixedDialog"
-    $helpForm.MaximizeBox = $false
-    $helpForm.MinimizeBox = $false
-    $helpForm.BackColor = [System.Drawing.Color]::White
-    $helpForm.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = "Excel Utility Tool - Help"
+    $form.Size = New-Object System.Drawing.Size(800,600)
+    $form.FormBorderStyle = "FixedDialog"
+    $form.MaximizeBox = $false; $form.MinimizeBox = $false
+    $form.BackColor = [System.Drawing.Color]::White
+    $form.Font = New-Object System.Drawing.Font("Segoe UI", 9)
 
-    # Tab Control
-    $tabControl = New-Object System.Windows.Forms.TabControl
-    $tabControl.Size = New-Object System.Drawing.Size(780, 550)
-    $tabControl.Location = New-Object System.Drawing.Point(10, 10)
-    $helpForm.Controls.Add($tabControl)
+    $tabs = New-Object System.Windows.Forms.TabControl
+    $tabs.Size = New-Object System.Drawing.Size(780,550)
+    $tabs.Location = New-Object System.Drawing.Point(10,10)
+    $form.Controls.Add($tabs)
 
-    # Overview Tab
-    $overviewTab = New-Object System.Windows.Forms.TabPage
-    $overviewTab.Text = "Overview"
-    $tabControl.Controls.Add($overviewTab)
+    function Add-Tab($title, $text) {
+        $tab = New-Object System.Windows.Forms.TabPage
+        $tab.Text = $title
+        $box = New-Object System.Windows.Forms.RichTextBox
+        $box.Text = $text
+        $box.Size = New-Object System.Drawing.Size(760,520)
+        $box.Location = New-Object System.Drawing.Point(10,10)
+        $box.ReadOnly = $true
+        $box.BackColor = [System.Drawing.Color]::White
+        $tab.Controls.Add($box)
+        $tabs.Controls.Add($tab)
+    }
 
-    $overviewText = New-Object System.Windows.Forms.RichTextBox
-    $overviewText.Text = @"
+    Add-Tab "Overview" @"
 EXCEL UTILITY TOOL - VERSION 4
-Created by: Geoff Lu
-Contact: geoffsmile@gmail.com
-Created: Tuesday, July 01, 2025
-Last Modified: Monday, July 07, 2025
+Created by: Geoff Lu | geoffsmile@gmail.com
+Created: July 1, 2025 | Last Modified: July 7, 2025
 
-TOOL DESCRIPTION
-This comprehensive Excel Utility Tool is designed to streamline your document processing workflow by providing essential file conversion and security management capabilities. Whether you're dealing with CSV files, text documents, or password-protected Excel files, this tool offers a user-friendly interface to handle your most common file processing tasks efficiently.
-
-The tool is specifically designed for business professionals, data analysts, administrative staff, and anyone who regularly works with Excel files and needs reliable, fast processing capabilities.
+A tool for business professionals, analysts & staff to streamline document workflows:
+- Convert CSV, TXT, XLS to modern XLSX format
+- Remove password protection (all files must use same password)
+- Batch processing, settings, logs, and progress tracking
 "@
-    $overviewText.Size = New-Object System.Drawing.Size(760, 520)
-    $overviewText.Location = New-Object System.Drawing.Point(10, 10)
-    $overviewText.ReadOnly = $true
-    $overviewText.BackColor = [System.Drawing.Color]::White
-    $overviewTab.Controls.Add($overviewText)
 
-    # Features Tab
-    $featuresTab = New-Object System.Windows.Forms.TabPage
-    $featuresTab.Text = "Features"
-    $tabControl.Controls.Add($featuresTab)
+    Add-Tab "Features" @"
+Key Features:
+• File format conversion (CSV, TXT, XLS → XLSX)
+• Password removal (same password required for batch)
+• Batch processing
+• Settings & logging
+• User-friendly interface
 
-    $featuresText = New-Object System.Windows.Forms.RichTextBox
-    $featuresText.Text = @"
-KEY FEATURES
-• File Format Conversion: Convert CSV, TXT, and legacy XLS files to modern XLSX format
-• Password Protection Removal: Unlock password-protected Excel files with ease
-• Batch Processing: Handle multiple files simultaneously for improved efficiency
-• Customizable Settings: Configure default paths and processing preferences
-• Comprehensive Logging: Track all operations with detailed log files
-• User-Friendly Interface: Intuitive design suitable for users of all technical levels
-• Progress Tracking: Real-time progress indicators for all operations
-• Error Handling: Robust error management with clear user feedback
+Requirements:
+• Windows 10/11, PowerShell 5.1+, .NET 4.7.2+, MS Excel, 2GB+ RAM
 
-SYSTEM REQUIREMENTS
-• Windows 10 or later (Windows 11 recommended)
-• Microsoft PowerShell 5.1 or later
-• .NET Framework 4.7.2 or later
-• Microsoft Office Excel (for advanced features)
-• Minimum 2GB RAM (4GB recommended)
-• 100MB free disk space
-
-KNOWN LIMITATIONS
-• Password removal requires all files to share the same password
-• Large files (>100MB) may require additional processing time
-• Some advanced Excel features may not be preserved during conversion
-• Network drives may cause slower processing speeds
-• Corrupted files cannot be processed and will generate error messages
+Limitations:
+• Only removes known passwords
+• Large files may process slowly
+• Some Excel features may not be preserved
 "@
-    $featuresText.Size = New-Object System.Drawing.Size(760, 520)
-    $featuresText.Location = New-Object System.Drawing.Point(10, 10)
-    $featuresText.ReadOnly = $true
-    $featuresText.BackColor = [System.Drawing.Color]::White
-    $featuresTab.Controls.Add($featuresText)
 
-    # Instructions Tab
-    $instructionsTab = New-Object System.Windows.Forms.TabPage
-    $instructionsTab.Text = "Instructions"
-    $tabControl.Controls.Add($instructionsTab)
+    Add-Tab "Instructions" @"
+Converting Files:
+1. Click 'Convert to Excel (.xlsx)'
+2. Select files (CSV, TXT, XLS)
+3. Select output folder
+4. Wait for completion
 
-    $instructionsText = New-Object System.Windows.Forms.RichTextBox
-    $instructionsText.Text = @"
-STEP-BY-STEP INSTRUCTIONS
+Unlocking Excel Files:
+1. Click 'Unlock Excel File'
+2. Enter password (must be same for all)
+3. Select locked Excel files
+4. Select output folder
 
-CONVERTING FILES TO EXCEL (.XLSX)
-1. Click the "Convert to Excel (.xlsx)" button on the main interface
-2. Select the files you want to convert using the file browser dialog
-   • Supported formats: CSV, TXT, XLS
-   • Multiple files can be selected simultaneously
-3. Choose the destination folder where converted files will be saved
-4. Wait for the conversion process to complete
-5. Check the status bar for completion confirmation and locate your converted files
-
-UNLOCKING EXCEL FILES
-1. Click the "Unlock Excel File" button on the main interface
-2. Enter the password used to protect the Excel files in the password dialog
-   • Note: All selected files must share the same password
-3. Select the password-protected Excel files you want to unlock
-4. Choose the destination folder for the unlocked files
-5. Monitor the progress bar and wait for the process to complete
-
-MODIFYING TOOL SETTINGS
-1. Click the "Application Tool Settings" button on the main interface
-2. Configure your preferences in the settings dialog:
-   • Default Input Path: Set the default folder for selecting input files
-   • Default Output Path: Set the default folder for saving processed files
-   • Remember Paths: Enable to automatically remember your folder selections
-   • Auto Delete Originals: Enable to automatically delete source files after processing
-   • Show Detailed Logs: Enable to display detailed processing information
-   • Sound Notifications: Enable audio notifications for completed operations
-3. Click "Save" to apply your changes or "Cancel" to discard them
-4. Settings are automatically saved and will be restored when you restart the tool
+Settings:
+1. Click 'Application Tool Settings'
+2. Adjust paths, logging, sound, etc.
+3. Save changes
 "@
-    $instructionsText.Size = New-Object System.Drawing.Size(760, 520)
-    $instructionsText.Location = New-Object System.Drawing.Point(10, 10)
-    $instructionsText.ReadOnly = $true
-    $instructionsText.BackColor = [System.Drawing.Color]::White
-    $instructionsTab.Controls.Add($instructionsText)
 
-    # FAQ Tab
-    $faqTab = New-Object System.Windows.Forms.TabPage
-    $faqTab.Text = "FAQ"
-    $tabControl.Controls.Add($faqTab)
+    Add-Tab "FAQ" @"
+Q: What formats are supported?
+A: CSV, TXT, XLS for conversion to XLSX.
 
-    $faqText = New-Object System.Windows.Forms.RichTextBox
-    $faqText.Text = @"
-FREQUENTLY ASKED QUESTIONS
+Q: Batch processing?
+A: Yes, select multiple files.
 
-Q: What file formats are supported for conversion?
-A: The tool supports CSV (Comma-Separated Values), TXT (Plain Text), and XLS (Legacy Excel) files for conversion to XLSX format. The tool automatically detects the file format and applies the appropriate conversion method.
+Q: Forgotten password?
+A: Password is required—cannot remove unknown.
 
-Q: Can I process multiple files at once?
-A: Yes! The tool is designed for batch processing. You can select multiple files of the same or different formats and process them simultaneously, saving significant time for large operations.
+Q: Are originals deleted?
+A: Only if 'Auto Delete Originals' is enabled.
 
-Q: What happens if I forget the password for my Excel files?
-A: Unfortunately, the tool can only remove passwords if you know the correct password. This is a security feature to protect your data. If you've forgotten the password, you'll need to use specialized password recovery software.
+Q: Where are logs?
+A: In the 'logs' folder beside the script.
 
-Q: Are my original files safe during processing?
-A: Yes, the tool creates copies of your files during processing. Your original files remain untouched unless you specifically enable the "Auto Delete Originals" setting in the application settings.
-
-Q: Where can I find the log files?
-A: Log files are automatically created in the "logs" folder within the same directory as the tool. Each day's activities are logged in a separate file named with the current date.
-
-Q: Can I customize the default folders?
-A: Absolutely! Use the "Application Tool Settings" to set default input and output folders. This saves time by automatically opening your preferred locations when browsing for files.
-
-Q: What should I do if the tool crashes or stops responding?
-A: First, check the log files for error messages. Restart the tool and try processing fewer files at once. If problems persist, contact the developer at geoffsmile@gmail.com with details about the issue.
-
-Q: Is this tool compatible with Office 365?
-A: Yes, the tool is compatible with all modern versions of Microsoft Office, including Office 365, Office 2019, and Office 2021. However, some advanced Excel features may not be preserved during conversion.
-
-Q: Can I use this tool on a network drive?
-A: While the tool can access network drives, processing may be slower due to network latency. For best performance, consider copying files to your local drive before processing.
-
-Q: How do I update the tool to the latest version?
-A: Currently, updates must be installed manually. Check with the developer periodically for new versions. Future versions may include automatic update functionality.
+Q: Office 365 supported?
+A: Yes—Office 365/2019/2021 supported.
 "@
-    $faqText.Size = New-Object System.Drawing.Size(760, 520)
-    $faqText.Location = New-Object System.Drawing.Point(10, 10)
-    $faqText.ReadOnly = $true
-    $faqText.BackColor = [System.Drawing.Color]::White
-    $faqTab.Controls.Add($faqText)
 
-    # About Tab
-    $aboutTab = New-Object System.Windows.Forms.TabPage
-    $aboutTab.Text = "About"
-    $tabControl.Controls.Add($aboutTab)
+    Add-Tab "About" @"
+Author: Geoff Lu | geoffsmile@gmail.com
+Reporting Analyst, Developer & Automation Enthusiast
 
-    $aboutText = New-Object System.Windows.Forms.RichTextBox
-    $aboutText.Text = @"
-ABOUT THE AUTHOR & TOOL
-
-DEVELOPER INFORMATION
-
-ABOUT GEOFF LU
-As a passionate reporting analyst, software developer and automation enthusiast, I specialize in creating practical tools that solve real-world business challenges. With extensive experience in PowerShell scripting, Windows Forms development, and business process automation, I focus on delivering solutions that are both powerful and user-friendly.
-
-My development philosophy centers on creating tools that are:
-• Intuitive enough for non-technical users
-• Robust enough for enterprise environments
-• Flexible enough to adapt to various workflows
-• Reliable enough for daily business operations
-
-TOOL DEVELOPMENT HISTORY
-Version 1.0 (Initial Release) - Basic file conversion functionality
-Version 2.0 (Enhanced) - Added password removal features
-Version 3.0 (Improved) - Enhanced UI and settings management
-Version 4.0 (Current) - Added comprehensive help system and optimization
-
-INCLUDED FILES
-• ExcelUtilityTool.ps1 - Main application script
-• settings.json - User preferences and configuration (auto-generated)
-• logs/ - Directory containing operation logs (auto-generated)
-• README.txt - Basic usage instructions (if included)
-
-TECHNICAL SPECIFICATIONS
-• Built with: PowerShell 5.1+ and .NET Framework
-• UI Framework: Windows Forms
-• Supported OS: Windows 10/11
-• Architecture: Compatible with both x86 and x64 systems
-• Dependencies: Microsoft Office Excel (recommended)
-
-CONTACT & SUPPORT
-For technical support, feature requests, or general inquiries:
-Email: geoffsmile@gmail.com
-
-When contacting for support, please include:
-• Tool version number
-• Operating system and Office version
-• Detailed description of the issue
-• Steps to reproduce the problem
-• Any error messages received
-
-ACKNOWLEDGMENTS
-Special thanks to the PowerShell and .NET communities for their excellent documentation and support resources. This tool leverages various open-source concepts and best practices developed by the broader development community.
-
-COPYRIGHT & LICENSE
-© 2025 Geoff Lu. All rights reserved.
-This tool is provided as-is for educational and business use.
-Redistribution and modification are permitted for personal and internal business use only.
+Philosophy: Intuitive, robust, flexible, and reliable tools.
+Versions: 1.0 (basic) → 2.0 (password) → 3.0 (UI/settings) → 4.0 (help/optimizations)
+License: © 2025 Geoff Lu. For educational/business use. Redistribution for personal/internal business only.
 "@
-    $aboutText.Size = New-Object System.Drawing.Size(760, 520)
-    $aboutText.Location = New-Object System.Drawing.Point(10, 10)
-    $aboutText.ReadOnly = $true
-    $aboutText.BackColor = [System.Drawing.Color]::White
-    $aboutTab.Controls.Add($aboutText)
 
-    # Close Button
-    $btnClose = New-Object System.Windows.Forms.Button
-    $btnClose.Text = "Close"
-    $btnClose.Size = New-Object System.Drawing.Size(100, 30)
-    $btnClose.Location = New-Object System.Drawing.Point(350, 565)
-    $btnClose.DialogResult = "OK"
-    $helpForm.Controls.Add($btnClose)
-
-    $helpForm.AcceptButton = $btnClose
-
-    return $helpForm.ShowDialog()
+    $closeBtn = New-Object System.Windows.Forms.Button
+    $closeBtn.Text = "Close"
+    $closeBtn.Size = New-Object System.Drawing.Size(100, 30)
+    $closeBtn.Location = New-Object System.Drawing.Point(350, 565)
+    $closeBtn.DialogResult = "OK"
+    $form.Controls.Add($closeBtn)
+    $form.AcceptButton = $closeBtn
+    $form.ShowDialog() | Out-Null
 }
 
 function Show-SettingsDialog {
-    $settingsForm = New-Object System.Windows.Forms.Form
-    $settingsForm.Text = "Application Tool Settings"
-    $settingsForm.Size = New-Object System.Drawing.Size(550, 400)  # Increased height
-    $settingsForm.StartPosition = "CenterParent"
-    $settingsForm.FormBorderStyle = "FixedDialog"
-    $settingsForm.MaximizeBox = $false
-    $settingsForm.MinimizeBox = $false
-    $settingsForm.BackColor = [System.Drawing.Color]::White
-    $settingsForm.ForeColor = $global:Config.Colors.Text
-    $settingsForm.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+    $f = New-Object System.Windows.Forms.Form
+    $f.Text = "Application Tool Settings"
+    $f.Size = New-Object System.Drawing.Size(550,400)
+    $f.FormBorderStyle = "FixedDialog"
+    $f.MaximizeBox = $false; $f.MinimizeBox = $false
+    $f.BackColor = [System.Drawing.Color]::White
+    $f.Font = New-Object System.Drawing.Font("Segoe UI", 9)
 
-    # Title
-    $titleLabel = New-Object System.Windows.Forms.Label
-    $titleLabel.Text = "Application Tool Settings"
-    $titleLabel.Font = New-Object System.Drawing.Font("Segoe UI", 13, [System.Drawing.FontStyle]::Bold)
-    $titleLabel.ForeColor = $global:Config.Colors.Primary
-    $titleLabel.Size = New-Object System.Drawing.Size(460, 25)
-    $titleLabel.Location = New-Object System.Drawing.Point(20, 15)
-    $settingsForm.Controls.Add($titleLabel)
-    
-    # Default Paths Section
-    $lblPaths = New-Object System.Windows.Forms.Label
-    $lblPaths.Text = "Default Paths"
-    $lblPaths.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
-    $lblPaths.ForeColor = $global:Config.Colors.Text
-    $lblPaths.Size = New-Object System.Drawing.Size(150, 20)
-    $lblPaths.Location = New-Object System.Drawing.Point(20, 50)
-    $settingsForm.Controls.Add($lblPaths)
+    $f.Controls.Add((New-Object System.Windows.Forms.Label -Property @{
+        Text="Application Tool Settings"
+        Font=New-Object System.Drawing.Font("Segoe UI",13,[System.Drawing.FontStyle]::Bold)
+        ForeColor=$global:Config.Colors.Primary
+        Size=New-Object System.Drawing.Size(460,25)
+        Location=New-Object System.Drawing.Point(20,15)
+    }))
 
-    # Input Path
-    $lblInput = New-Object System.Windows.Forms.Label
-    $lblInput.Text = "Default Input:"
-    $lblInput.ForeColor = $global:Config.Colors.Text
-    $lblInput.Size = New-Object System.Drawing.Size(100, 20)
-    $lblInput.Location = New-Object System.Drawing.Point(30, 80)
-    $settingsForm.Controls.Add($lblInput)
+    $f.Controls.Add((New-Object System.Windows.Forms.Label -Property @{Text="Default Paths"; Font=(New-Object System.Drawing.Font("Segoe UI",9,[System.Drawing.FontStyle]::Bold)); ForeColor=$global:Config.Colors.Text; Size=New-Object System.Drawing.Size(150,20); Location=New-Object System.Drawing.Point(20,50)}))
+    $f.Controls.Add((New-Object System.Windows.Forms.Label -Property @{Text="Default Input:"; ForeColor=$global:Config.Colors.Text; Size=New-Object System.Drawing.Size(100,20); Location=New-Object System.Drawing.Point(30,80)}))
+    $f.Controls.Add((New-Object System.Windows.Forms.Label -Property @{Text="Default Output:"; ForeColor=$global:Config.Colors.Text; Size=New-Object System.Drawing.Size(100,20); Location=New-Object System.Drawing.Point(30,110)}))
 
-    $txtInputPath = New-Object System.Windows.Forms.TextBox
-    $txtInputPath.Size = New-Object System.Drawing.Size(300, 20)
-    $txtInputPath.Location = New-Object System.Drawing.Point(130, 78)
-    $txtInputPath.BackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)  # #E6E6E6
-    $txtInputPath.Text = if ($global:Config.Settings.DefaultInputPath) { 
-        $global:Config.Settings.DefaultInputPath 
-    } else { "" }
-    $settingsForm.Controls.Add($txtInputPath)
+    $txtInput = New-Object System.Windows.Forms.TextBox -Property @{Size=New-Object System.Drawing.Size(300,20); Location=New-Object System.Drawing.Point(130,78); BackColor=[System.Drawing.Color]::FromArgb(230,230,230); Text=$global:Config.Settings.DefaultInputPath}
+    $txtOutput = New-Object System.Windows.Forms.TextBox -Property @{Size=New-Object System.Drawing.Size(300,20); Location=New-Object System.Drawing.Point(130,108); BackColor=[System.Drawing.Color]::FromArgb(230,230,230); Text=$global:Config.Settings.DefaultOutputPath}
+    $f.Controls.Add($txtInput); $f.Controls.Add($txtOutput)
 
-    $btnBrowseInput = [StandardButton]::new()
-    $btnBrowseInput.Text = "Browse..."
-    $btnBrowseInput.Size = New-Object System.Drawing.Size(80, 25)
-    $btnBrowseInput.Location = New-Object System.Drawing.Point(440, 75)
-    $settingsForm.Controls.Add($btnBrowseInput)
+    $btnBrowseInput = [StandardButton]::new(); $btnBrowseInput.Text = "Browse..."; $btnBrowseInput.Size = New-Object System.Drawing.Size(80,25); $btnBrowseInput.Location = New-Object System.Drawing.Point(440,75)
+    $btnBrowseOutput = [StandardButton]::new(); $btnBrowseOutput.Text = "Browse..."; $btnBrowseOutput.Size = New-Object System.Drawing.Size(80,25); $btnBrowseOutput.Location = New-Object System.Drawing.Point(440,105)
+    $f.Controls.Add($btnBrowseInput); $f.Controls.Add($btnBrowseOutput)
 
-    # Output Path
-    $lblOutput = New-Object System.Windows.Forms.Label
-    $lblOutput.Text = "Default Output:"
-    $lblOutput.ForeColor = $global:Config.Colors.Text
-    $lblOutput.Size = New-Object System.Drawing.Size(100, 20)
-    $lblOutput.Location = New-Object System.Drawing.Point(30, 110)
-    $settingsForm.Controls.Add($lblOutput)
+    $f.Controls.Add((New-Object System.Windows.Forms.Label -Property @{Text="Application Settings"; Font=(New-Object System.Drawing.Font("Segoe UI",9,[System.Drawing.FontStyle]::Bold)); ForeColor=$global:Config.Colors.Text; Size=New-Object System.Drawing.Size(150,20); Location=New-Object System.Drawing.Point(20,150)}))
 
-    $txtOutputPath = New-Object System.Windows.Forms.TextBox
-    $txtOutputPath.Size = New-Object System.Drawing.Size(300, 20)
-    $txtOutputPath.Location = New-Object System.Drawing.Point(130, 108)
-    $txtOutputPath.BackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)  # #E6E6E6
-    $txtOutputPath.Text = if ($global:Config.Settings.DefaultOutputPath) { 
-        $global:Config.Settings.DefaultOutputPath 
-    } else { "" }
-    $settingsForm.Controls.Add($txtOutputPath)
+    $chkRemember = New-Object System.Windows.Forms.CheckBox -Property @{Text="Remember selected paths as defaults"; Size=New-Object System.Drawing.Size(400,20); Location=New-Object System.Drawing.Point(30,180); Checked=$global:Config.Settings.RememberPaths}
+    $chkDelete   = New-Object System.Windows.Forms.CheckBox -Property @{Text="Automatically delete original files after processing"; Size=New-Object System.Drawing.Size(400,20); Location=New-Object System.Drawing.Point(30,210); Checked=$global:Config.Settings.AutoDeleteOriginals}
+    $chkLogs     = New-Object System.Windows.Forms.CheckBox -Property @{Text="Show detailed logs in console"; Size=New-Object System.Drawing.Size(400,20); Location=New-Object System.Drawing.Point(30,240); Checked=$global:Config.Settings.ShowDetailedLogs}
+    $chkSound    = New-Object System.Windows.Forms.CheckBox -Property @{Text="Enable sound notifications"; Size=New-Object System.Drawing.Size(400,20); Location=New-Object System.Drawing.Point(30,270); Checked=$global:Config.Settings.SoundNotifications}
+    $f.Controls.Add($chkRemember); $f.Controls.Add($chkDelete); $f.Controls.Add($chkLogs); $f.Controls.Add($chkSound)
 
-    $btnBrowseOutput = [StandardButton]::new()
-    $btnBrowseOutput.Text = "Browse..."
-    $btnBrowseOutput.Size = New-Object System.Drawing.Size(80, 25)
-    $btnBrowseOutput.Location = New-Object System.Drawing.Point(440, 105)
-    $settingsForm.Controls.Add($btnBrowseOutput)
+    $btnOK = [StandardButton]::new(); $btnOK.Text="Save"; $btnOK.Size=New-Object System.Drawing.Size(80,30); $btnOK.Location=New-Object System.Drawing.Point(350,320); $btnOK.DialogResult="OK"
+    $btnCancel = [StandardButton]::new(); $btnCancel.Text="Cancel"; $btnCancel.Size=New-Object System.Drawing.Size(80,30); $btnCancel.Location=New-Object System.Drawing.Point(440,320); $btnCancel.DialogResult="Cancel"
+    $f.Controls.Add($btnOK); $f.Controls.Add($btnCancel)
+    $f.AcceptButton = $btnOK; $f.CancelButton = $btnCancel
 
-    # Application Settings Section
-    $lblAppSettings = New-Object System.Windows.Forms.Label
-    $lblAppSettings.Text = "Application Settings"
-    $lblAppSettings.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
-    $lblAppSettings.ForeColor = $global:Config.Colors.Text
-    $lblAppSettings.Size = New-Object System.Drawing.Size(150, 20)
-    $lblAppSettings.Location = New-Object System.Drawing.Point(20, 150)
-    $settingsForm.Controls.Add($lblAppSettings)
-
-    # Checkboxes
-    $chkRememberPaths = New-Object System.Windows.Forms.CheckBox
-    $chkRememberPaths.Text = "Remember selected paths as defaults"
-    $chkRememberPaths.Size = New-Object System.Drawing.Size(400, 20)
-    $chkRememberPaths.Location = New-Object System.Drawing.Point(30, 180)
-    $chkRememberPaths.Checked = $global:Config.Settings.RememberPaths
-    $settingsForm.Controls.Add($chkRememberPaths)
-
-    $chkAutoDelete = New-Object System.Windows.Forms.CheckBox
-    $chkAutoDelete.Text = "Automatically delete original files after processing"
-    $chkAutoDelete.Size = New-Object System.Drawing.Size(400, 20)
-    $chkAutoDelete.Location = New-Object System.Drawing.Point(30, 210)
-    $chkAutoDelete.Checked = $global:Config.Settings.AutoDeleteOriginals
-    $settingsForm.Controls.Add($chkAutoDelete)
-
-    $chkShowLogs = New-Object System.Windows.Forms.CheckBox
-    $chkShowLogs.Text = "Show detailed logs in console"
-    $chkShowLogs.Size = New-Object System.Drawing.Size(400, 20)
-    $chkShowLogs.Location = New-Object System.Drawing.Point(30, 240)
-    $chkShowLogs.Checked = $global:Config.Settings.ShowDetailedLogs
-    $settingsForm.Controls.Add($chkShowLogs)
-
-    $chkSoundNotify = New-Object System.Windows.Forms.CheckBox
-    $chkSoundNotify.Text = "Enable sound notifications"
-    $chkSoundNotify.Size = New-Object System.Drawing.Size(400, 20)
-    $chkSoundNotify.Location = New-Object System.Drawing.Point(30, 270)
-    $chkSoundNotify.Checked = $global:Config.Settings.SoundNotifications
-    $settingsForm.Controls.Add($chkSoundNotify)
-
-    # Buttons
-    $btnOK = [StandardButton]::new()
-    $btnOK.Text = "Save"
-    $btnOK.Size = New-Object System.Drawing.Size(80, 30)
-    $btnOK.Location = New-Object System.Drawing.Point(350, 320)
-    $btnOK.DialogResult = "OK"
-    $settingsForm.Controls.Add($btnOK)
-
-    $btnCancel = [StandardButton]::new()
-    $btnCancel.Text = "Cancel"
-    $btnCancel.Size = New-Object System.Drawing.Size(80, 30)
-    $btnCancel.Location = New-Object System.Drawing.Point(440, 320)
-    $btnCancel.DialogResult = "Cancel"
-    $settingsForm.Controls.Add($btnCancel)
-
-    $settingsForm.AcceptButton = $btnOK
-    $settingsForm.CancelButton = $btnCancel
-
-    # Event handlers
     $btnBrowseInput.Add_Click({
-        $fbd = New-Object System.Windows.Forms.FolderBrowserDialog
-        $fbd.Description = "Select Default Input Folder"
-        if (-not [string]::IsNullOrWhiteSpace($txtInputPath.Text)) { $fbd.SelectedPath = $txtInputPath.Text }
-        if ($fbd.ShowDialog() -eq "OK") { $txtInputPath.Text = $fbd.SelectedPath }
+        $d = New-Object System.Windows.Forms.FolderBrowserDialog
+        $d.Description = "Select Default Input Folder"
+        if (-not [string]::IsNullOrWhiteSpace($txtInput.Text)) { $d.SelectedPath = $txtInput.Text }
+        if ($d.ShowDialog() -eq "OK") { $txtInput.Text = $d.SelectedPath }
     })
-    
     $btnBrowseOutput.Add_Click({
-        $fbd = New-Object System.Windows.Forms.FolderBrowserDialog
-        $fbd.Description = "Select Default Output Folder"
-        if (-not [string]::IsNullOrWhiteSpace($txtOutputPath.Text)) { $fbd.SelectedPath = $txtOutputPath.Text }
-        if ($fbd.ShowDialog() -eq "OK") { $txtOutputPath.Text = $fbd.SelectedPath }
+        $d = New-Object System.Windows.Forms.FolderBrowserDialog
+        $d.Description = "Select Default Output Folder"
+        if (-not [string]::IsNullOrWhiteSpace($txtOutput.Text)) { $d.SelectedPath = $txtOutput.Text }
+        if ($d.ShowDialog() -eq "OK") { $txtOutput.Text = $d.SelectedPath }
     })
-    
+
     $btnOK.Add_Click({
-        if (-not [string]::IsNullOrWhiteSpace($txtInputPath.Text) -and -not (Test-Path $txtInputPath.Text)) {
-            Show-MessageBox "Input path does not exist: $($txtInputPath.Text)" "Invalid Path" "Warning"
-            return
+        if ($txtInput.Text -and -not (Test-Path $txtInput.Text)) {
+            Show-MessageBox "Input path doesn't exist: $($txtInput.Text)" "Invalid Path" "Warning"; return
         }
-        
-        if (-not [string]::IsNullOrWhiteSpace($txtOutputPath.Text) -and -not (Test-Path $txtOutputPath.Text)) {
-            Show-MessageBox "Output path does not exist: $($txtOutputPath.Text)" "Invalid Path" "Warning"
-            return
+        if ($txtOutput.Text -and -not (Test-Path $txtOutput.Text)) {
+            Show-MessageBox "Output path doesn't exist: $($txtOutput.Text)" "Invalid Path" "Warning"; return
         }
-        
-        # Save settings
-        $global:Config.Settings.DefaultInputPath = $txtInputPath.Text
-        $global:Config.Settings.DefaultOutputPath = $txtOutputPath.Text
-        $global:Config.Settings.RememberPaths = $chkRememberPaths.Checked
-        $global:Config.Settings.AutoDeleteOriginals = $chkAutoDelete.Checked
-        $global:Config.Settings.ShowDetailedLogs = $chkShowLogs.Checked
-        $global:Config.Settings.SoundNotifications = $chkSoundNotify.Checked
-        
-        if (Save-Settings) { 
-            Play-SuccessSound
-            $settingsForm.Close() 
-        }
-        else { 
-            Show-MessageBox "Failed to save settings. Please try again." "Error" "Error" 
-        }
+        $global:Config.Settings.DefaultInputPath = $txtInput.Text
+        $global:Config.Settings.DefaultOutputPath = $txtOutput.Text
+        $global:Config.Settings.RememberPaths = $chkRemember.Checked
+        $global:Config.Settings.AutoDeleteOriginals = $chkDelete.Checked
+        $global:Config.Settings.ShowDetailedLogs = $chkLogs.Checked
+        $global:Config.Settings.SoundNotifications = $chkSound.Checked
+        if (Save-Settings) { Play-Sound "Success"; $f.Close() }
+        else { Show-MessageBox "Failed to save settings." "Error" "Error" }
     })
-    
-    return $settingsForm.ShowDialog()
+
+    $f.ShowDialog() | Out-Null
 }
 
-function Get-InputFiles {
-    param(
-        [string]$Title = "Select files to process",
-        [string]$Filter = "Excel files (*.xls;*.xlsx)|*.xls;*.xlsx|CSV files (*.csv)|*.csv|Text files (*.txt)|*.txt|All files (*.*)|*.*"
-    )
-    
+function Get-InputFiles($Title="Select files to process", $Filter="Excel files (*.xls;*.xlsx)|*.xls;*.xlsx|CSV files (*.csv)|*.csv|Text files (*.txt)|*.txt|All files (*.*)|*.*") {
     $ofd = New-Object System.Windows.Forms.OpenFileDialog
     $ofd.Multiselect = $true
     $ofd.Title = $Title
     $ofd.Filter = $Filter
-    
-    if (Test-PathValid $global:Config.Settings.DefaultInputPath) {
-        $ofd.InitialDirectory = $global:Config.Settings.DefaultInputPath
-    }
-    
+    if (Path-Valid $global:Config.Settings.DefaultInputPath) { $ofd.InitialDirectory = $global:Config.Settings.DefaultInputPath }
     if ($ofd.ShowDialog() -eq "OK") { return $ofd.FileNames }
     return $null
 }
 
-function Get-OutputFolder {
-    param([string]$Title = "Select output folder")
-    
-    $fbd = New-Object System.Windows.Forms.FolderBrowserDialog
-    $fbd.Description = $Title
-    
-    if (Test-PathValid $global:Config.Settings.DefaultOutputPath) {
-        $fbd.SelectedPath = $global:Config.Settings.DefaultOutputPath
+function Get-OutputFolder($Title="Select output folder") {
+    $d = New-Object System.Windows.Forms.FolderBrowserDialog
+    $d.Description = $Title
+    if (Path-Valid $global:Config.Settings.DefaultOutputPath) { $d.SelectedPath = $global:Config.Settings.DefaultOutputPath }
+    if ($d.ShowDialog() -eq "OK") { return $d.SelectedPath }
+    return $null
+}
+
+function Get-PasswordInput($Title="Enter Password") {
+    $form = New-Object System.Windows.Forms.Form -Property @{
+        Text=$Title; Size=New-Object System.Drawing.Size(380,205)
+        StartPosition="CenterParent"; FormBorderStyle="FixedDialog"; MaximizeBox=$false; MinimizeBox=$false
+        BackColor=$global:Config.Colors.Secondary; Font=(New-Object System.Drawing.Font("Segoe UI",9))
     }
-    
-    if ($fbd.ShowDialog() -eq "OK") { return $fbd.SelectedPath }
+    $form.Controls.Add((New-Object System.Windows.Forms.Label -Property @{
+        Text="Please enter the password used to protect these files"
+        ForeColor=$global:Config.Colors.Primary; Font=(New-Object System.Drawing.Font("Segoe UI",9,[System.Drawing.FontStyle]::Bold))
+        Size=New-Object System.Drawing.Size(340,30); Location=New-Object System.Drawing.Point(20,15)
+        TextAlign=[System.Windows.Forms.HorizontalAlignment]::Center
+    }))
+    $form.Controls.Add((New-Object System.Windows.Forms.Label -Property @{
+        Text="Password:"; ForeColor=$global:Config.Colors.Text; Size=New-Object System.Drawing.Size(80,20)
+        Location=New-Object System.Drawing.Point(70,45)
+    }))
+    $txtPassword = New-Object System.Windows.Forms.TextBox -Property @{
+        Size=New-Object System.Drawing.Size(240,20); Location=New-Object System.Drawing.Point(70,65)
+        BackColor=[System.Drawing.Color]::FromArgb(230,230,230); UseSystemPasswordChar=$false
+    }
+    $form.Controls.Add($txtPassword)
+    $btnOK = [StandardButton]::new(); $btnOK.Text="OK"; $btnOK.Size=New-Object System.Drawing.Size(100,32); $btnOK.Location=New-Object System.Drawing.Point(140,100); $btnOK.DialogResult="OK"
+    $form.Controls.Add($btnOK)
+    $form.Controls.Add((New-Object System.Windows.Forms.Label -Property @{
+        Text="This tool can only remove passwords from files if they all share the same password."
+        ForeColor=$global:Config.Colors.Text; Font=(New-Object System.Drawing.Font("Segoe UI",8,[System.Drawing.FontStyle]::Italic))
+        Size=New-Object System.Drawing.Size(340,40); Location=New-Object System.Drawing.Point(20,140)
+        TextAlign=[System.Windows.Forms.HorizontalAlignment]::Center
+    }))
+    $form.AcceptButton = $btnOK
+    if ($form.ShowDialog() -eq "OK") { return $txtPassword.Text }
     return $null
 }
 
-function Get-PasswordInput {
-    param([string]$Title = "Enter Password")
-    
-    $passwordForm = New-Object System.Windows.Forms.Form
-    $passwordForm.Text = $Title
-    $passwordForm.Size = New-Object System.Drawing.Size(380, 205)  # Adjusted size
-    $passwordForm.StartPosition = "CenterParent"
-    $passwordForm.FormBorderStyle = "FixedDialog"
-    $passwordForm.MaximizeBox = $false
-    $passwordForm.MinimizeBox = $false
-    $passwordForm.BackColor = $global:Config.Colors.Secondary
-    $passwordForm.Font = New-Object System.Drawing.Font("Segoe UI", 9)
-
-    # Main instruction (with primary color)
-    $lblMainInstruction = New-Object System.Windows.Forms.Label
-    $lblMainInstruction.Text = "Please enter the password used to protect these files"
-    $lblMainInstruction.ForeColor = $global:Config.Colors.Primary
-    $lblMainInstruction.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
-    $lblMainInstruction.Size = New-Object System.Drawing.Size(340, 30)
-    $lblMainInstruction.Location = New-Object System.Drawing.Point(20, 15)
-    $lblMainInstruction.TextAlign = [System.Windows.Forms.HorizontalAlignment]::Center
-    $passwordForm.Controls.Add($lblMainInstruction)
-
-    # Password label
-    $lblPassword = New-Object System.Windows.Forms.Label
-    $lblPassword.Text = "Password:"
-    $lblPassword.ForeColor = $global:Config.Colors.Text
-    $lblPassword.Size = New-Object System.Drawing.Size(80, 20)
-    $lblPassword.Location = New-Object System.Drawing.Point(70, 45)
-    $passwordForm.Controls.Add($lblPassword)
-
-    # Password textbox (with light gray background)
-    $txtPassword = New-Object System.Windows.Forms.TextBox
-    $txtPassword.Size = New-Object System.Drawing.Size(240, 20)
-    $txtPassword.Location = New-Object System.Drawing.Point(70, 65)
-    $txtPassword.BackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)  # #E6E6E6
-    $txtPassword.UseSystemPasswordChar = $false
-    $passwordForm.Controls.Add($txtPassword)
-
-    # OK button (centered)
-    $btnOK = [StandardButton]::new()
-    $btnOK.Text = "OK"
-    $btnOK.Size = New-Object System.Drawing.Size(100, 32)
-    $btnOK.Location = New-Object System.Drawing.Point(140, 100)
-    $btnOK.DialogResult = "OK"
-    $passwordForm.Controls.Add($btnOK)
-
-    # Footer note (italicized)
-    $lblFooter = New-Object System.Windows.Forms.Label
-    $lblFooter.Text = "This tool can only remove passwords from files if they all share the same password."
-    $lblFooter.ForeColor = $global:Config.Colors.Text
-    $lblFooter.Font = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Italic)
-    $lblFooter.Size = New-Object System.Drawing.Size(340, 40)
-    $lblFooter.Location = New-Object System.Drawing.Point(20, 140)
-    $lblFooter.TextAlign = [System.Windows.Forms.HorizontalAlignment]::Center
-    $passwordForm.Controls.Add($lblFooter)
-
-    $passwordForm.AcceptButton = $btnOK
-    
-    $result = $passwordForm.ShowDialog()
-    if ($result -eq "OK") { return $txtPassword.Text }
-    return $null
-}
-
-# ==============================================================================
-# MAIN APPLICATION FORM
-# ==============================================================================
+# --- Main UI ---
 
 function Initialize-MainForm {
     Load-Settings
-    
-    $mainForm = New-Object System.Windows.Forms.Form
-    $mainForm.Text = "Excel Utility Tool v$($global:Config.Version) - Geoff Lu"
-    $mainForm.Size = New-Object System.Drawing.Size(400, 390)
-    $mainForm.StartPosition = "CenterScreen"
-    $mainForm.FormBorderStyle = "FixedDialog"
-    $mainForm.MaximizeBox = $false
-    $mainForm.BackColor = $global:Config.Colors.Secondary
-    $mainForm.Font = New-Object System.Drawing.Font("Segoe UI", 8)
-    
-    # Title
-    $titleLabel = New-Object System.Windows.Forms.Label
-    $titleLabel.Text = "Excel Utility Tool"
-    $titleLabel.Font = New-Object System.Drawing.Font("Segoe UI", 14, [System.Drawing.FontStyle]::Bold)
-    $titleLabel.ForeColor = $global:Config.Colors.Primary
-    $titleLabel.Size = New-Object System.Drawing.Size(360, 25)
-    $titleLabel.Location = New-Object System.Drawing.Point(20, 20)
-    $mainForm.Controls.Add($titleLabel)
-    
-    # Version
-    $versionLabel = New-Object System.Windows.Forms.Label
-    $versionLabel.Text = "Version $($global:Config.Version)"
-    $versionLabel.Size = New-Object System.Drawing.Size(360, 20)
-    $versionLabel.Location = New-Object System.Drawing.Point(20, 45)
-    $versionLabel.ForeColor = $global:Config.Colors.Text
-    $mainForm.Controls.Add($versionLabel)
-    
-    # Buttons - stored in script scope for proper reference
-    $script:btnConvert = [StandardButton]::new()
-    $script:btnConvert.Text = "Convert to Excel (.xlsx)"
-    $script:btnConvert.Size = New-Object System.Drawing.Size(360, 35)
-    $script:btnConvert.Location = New-Object System.Drawing.Point(20, 80)
-    $mainForm.Controls.Add($script:btnConvert)
-    
-    $script:btnRemovePassword = [StandardButton]::new()
-    $script:btnRemovePassword.Text = "Unlock Excel File"
-    $script:btnRemovePassword.Size = New-Object System.Drawing.Size(360, 35)
-    $script:btnRemovePassword.Location = New-Object System.Drawing.Point(20, 125)
-    $mainForm.Controls.Add($script:btnRemovePassword)
-    
-    $script:btnSettings = [StandardButton]::new()
-    $script:btnSettings.Text = "Application Tool Settings"
-    $script:btnSettings.Size = New-Object System.Drawing.Size(360, 35)
-    $script:btnSettings.Location = New-Object System.Drawing.Point(20, 170)
-    $mainForm.Controls.Add($script:btnSettings)
+    $f = New-Object System.Windows.Forms.Form
+    $f.Text = "Excel Utility Tool v$($global:Config.Version) - Geoff Lu"
+    $f.Size = New-Object System.Drawing.Size(400,390)
+    $f.FormBorderStyle = "FixedDialog"
+    $f.MaximizeBox = $false
+    $f.BackColor = $global:Config.Colors.Secondary
+    $f.Font = New-Object System.Drawing.Font("Segoe UI",8)
 
-    $script:btnHelp = [StandardButton]::new()
-    $script:btnHelp.Text = "Help && Information"
-    $script:btnHelp.Size = New-Object System.Drawing.Size(360, 35)
-    $script:btnHelp.Location = New-Object System.Drawing.Point(20, 215)
-    $mainForm.Controls.Add($script:btnHelp)
-    
-    # Status area
-    $script:statusLabel = New-Object System.Windows.Forms.Label
-    $script:statusLabel.Text = "Ready!"
-    $script:statusLabel.Size = New-Object System.Drawing.Size(360, 20)
-    $script:statusLabel.Location = New-Object System.Drawing.Point(20, 260)
-    $script:statusLabel.ForeColor = $global:Config.Colors.Text
-    $mainForm.Controls.Add($script:statusLabel)
-    
-    # Progress bar
-    $script:progressBar = New-Object System.Windows.Forms.ProgressBar
-    $script:progressBar.Size = New-Object System.Drawing.Size(360, 20)
-    $script:progressBar.Location = New-Object System.Drawing.Point(20, 280)
-    $mainForm.Controls.Add($script:progressBar)
-    
-    # Footer
-    $footerLabel = New-Object System.Windows.Forms.Label
-    $footerLabel.Text = "© 2025 Geoff Lu. All rights reserved.`nCreated && Developed on July 1, 2025"
-    $footerLabel.Size = New-Object System.Drawing.Size(360, 40)
-    $footerLabel.Location = New-Object System.Drawing.Point(20, 320)
-    $footerLabel.ForeColor = $global:Config.Colors.Text
-    $footerLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8)
-    $footerLabel.TextAlign = "MiddleCenter"
-    $mainForm.Controls.Add($footerLabel)
-    
-    # Convert button click handler
-    $script:btnConvert.Add_Click({
+    $f.Controls.Add((New-Object System.Windows.Forms.Label -Property @{
+        Text="Excel Utility Tool"; Font=(New-Object System.Drawing.Font("Segoe UI",14,[System.Drawing.FontStyle]::Bold))
+        ForeColor=$global:Config.Colors.Primary; Size=New-Object System.Drawing.Size(360,25); Location=New-Object System.Drawing.Point(20,20)
+    }))
+    $f.Controls.Add((New-Object System.Windows.Forms.Label -Property @{
+        Text="Version $($global:Config.Version)"; Size=New-Object System.Drawing.Size(360,20); Location=New-Object System.Drawing.Point(20,45)
+        ForeColor=$global:Config.Colors.Text
+    }))
+
+    $btnConvert = [StandardButton]::new(); $btnConvert.Text="Convert to Excel (.xlsx)"; $btnConvert.Size=New-Object System.Drawing.Size(360,35); $btnConvert.Location=New-Object System.Drawing.Point(20,80)
+    $btnUnlock = [StandardButton]::new(); $btnUnlock.Text="Unlock Excel File"; $btnUnlock.Size=New-Object System.Drawing.Size(360,35); $btnUnlock.Location=New-Object System.Drawing.Point(20,125)
+    $btnSettings = [StandardButton]::new(); $btnSettings.Text="Application Tool Settings"; $btnSettings.Size=New-Object System.Drawing.Size(360,35); $btnSettings.Location=New-Object System.Drawing.Point(20,170)
+    $btnHelp = [StandardButton]::new(); $btnHelp.Text="Help && Information"; $btnHelp.Size=New-Object System.Drawing.Size(360,35); $btnHelp.Location=New-Object System.Drawing.Point(20,215)
+    $f.Controls.AddRange(@($btnConvert,$btnUnlock,$btnSettings,$btnHelp))
+
+    $status = New-Object System.Windows.Forms.Label -Property @{Text="Ready!"; Size=New-Object System.Drawing.Size(360,20); Location=New-Object System.Drawing.Point(20,260); ForeColor=$global:Config.Colors.Text}
+    $progress = New-Object System.Windows.Forms.ProgressBar -Property @{Size=New-Object System.Drawing.Size(360,20); Location=New-Object System.Drawing.Point(20,280)}
+    $f.Controls.Add($status); $f.Controls.Add($progress)
+    $f.Controls.Add((New-Object System.Windows.Forms.Label -Property @{
+        Text="© 2025 Geoff Lu. All rights reserved.`nCreated July 1, 2025"
+        Size=New-Object System.Drawing.Size(360,40); Location=New-Object System.Drawing.Point(20,320)
+        ForeColor=$global:Config.Colors.Text; Font=(New-Object System.Drawing.Font("Segoe UI",8))
+        TextAlign="MiddleCenter"
+    }))
+
+    $btnConvert.Add_Click({
         try {
-            $script:statusLabel.Text = "Selecting files..."
-            $inputFiles = Get-InputFiles "Select files to convert to .xlsx" "CSV files (*.csv)|*.csv|Text files (*.txt)|*.txt|Excel files (*.xls)|*.xls|All files (*.*)|*.*"
-            if (-not $inputFiles) { 
-                $script:statusLabel.Text = "Ready"
-                return 
-            }
-            
-            $script:statusLabel.Text = "Selecting output folder..."
-            $outputFolder = Get-OutputFolder "Select output folder for converted files"
-            if (-not $outputFolder) { 
-                $script:statusLabel.Text = "Ready"
-                return 
-            }
-            
-            # Disable buttons properly
-            $script:btnConvert.Enabled = $false
-            $script:btnRemovePassword.Enabled = $false
-            $script:btnSettings.Enabled = $false
-            
-            $script:statusLabel.Text = "Processing files..."
-            
-            # Simulate processing (replace with actual conversion code)
-            for ($i = 0; $i -le 100; $i++) {
-                $script:progressBar.Value = $i
-                [System.Windows.Forms.Application]::DoEvents()
-                Start-Sleep -Milliseconds 20
-            }
-            
-            $script:statusLabel.Text = "Conversion completed"
-            Play-SuccessSound
-        }
-        catch {
-            $script:statusLabel.Text = "Error occurred"
-            Show-MessageBox "An error occurred during file conversion: $($_.Exception.Message)" "Error" "Error"
-            Write-Log "Error in convert button click: $($_.Exception.Message)" "ERROR"
-        }
-        finally {
-            # Always re-enable buttons
-            $script:btnConvert.Enabled = $true
-            $script:btnRemovePassword.Enabled = $true
-            $script:btnSettings.Enabled = $true
-            $script:progressBar.Value = 0
+            $status.Text = "Selecting files..."
+            $files = Get-InputFiles "Select files to convert to .xlsx" "CSV files (*.csv)|*.csv|Text files (*.txt)|*.txt|Excel files (*.xls)|*.xls|All files (*.*)|*.*"
+            if (-not $files) { $status.Text = "Ready"; return }
+            $status.Text = "Selecting output folder..."
+            $out = Get-OutputFolder "Select output folder for converted files"
+            if (-not $out) { $status.Text = "Ready"; return }
+            $btnConvert.Enabled = $btnUnlock.Enabled = $btnSettings.Enabled = $false
+            $status.Text = "Processing files..."
+            for ($i=0; $i -le 100; $i++) { $progress.Value = $i; [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 10 }
+            $status.Text = "Conversion completed"; Play-Sound "Success"
+        } catch {
+            $status.Text = "Error occurred"
+            Show-MessageBox "Conversion error: $($_.Exception.Message)" "Error" "Error"
+            Write-Log "Convert error: $($_.Exception.Message)" "ERROR"
+        } finally {
+            $btnConvert.Enabled = $btnUnlock.Enabled = $btnSettings.Enabled = $true; $progress.Value = 0
         }
     })
-    
-    # Remove Password button click handler
-    $script:btnRemovePassword.Add_Click({
+
+    $btnUnlock.Add_Click({
         try {
-            $password = Get-PasswordInput "Enter Excel Password"
-            if (-not $password) { return }
-            
-            $script:statusLabel.Text = "Selecting files..."
-            $inputFiles = Get-InputFiles "Select password-protected Excel files" "Excel files (*.xls;*.xlsx)|*.xls;*.xlsx|All files (*.*)|*.*"
-            if (-not $inputFiles) { 
-                $script:statusLabel.Text = "Ready"
-                return 
-            }
-            
-            $script:statusLabel.Text = "Selecting output folder..."
-            $outputFolder = Get-OutputFolder "Select output folder for unlocked files"
-            if (-not $outputFolder) { 
-                $script:statusLabel.Text = "Ready"
-                return 
-            }
-            
-            # Disable buttons properly
-            $script:btnConvert.Enabled = $false
-            $script:btnRemovePassword.Enabled = $false
-            $script:btnSettings.Enabled = $false
-            
-            $script:statusLabel.Text = "Processing files..."
-            
-            # Simulate processing (replace with actual password removal code)
-            for ($i = 0; $i -le 100; $i++) {
-                $script:progressBar.Value = $i
-                [System.Windows.Forms.Application]::DoEvents()
-                Start-Sleep -Milliseconds 20
-            }
-            
-            $script:statusLabel.Text = "Password removal completed"
-            Play-SuccessSound
-        }
-        catch {
-            $script:statusLabel.Text = "Error occurred"
-            Show-MessageBox "An error occurred during password removal: $($_.Exception.Message)" "Error" "Error"
-            Write-Log "Error in remove password button click: $($_.Exception.Message)" "ERROR"
-        }
-        finally {
-            # Always re-enable buttons
-            $script:btnConvert.Enabled = $true
-            $script:btnRemovePassword.Enabled = $true
-            $script:btnSettings.Enabled = $true
-            $script:progressBar.Value = 0
+            $pw = Get-PasswordInput "Enter Excel Password"
+            if (-not $pw) { return }
+            $status.Text = "Selecting files..."
+            $files = Get-InputFiles "Select password-protected Excel files" "Excel files (*.xls;*.xlsx)|*.xls;*.xlsx|All files (*.*)|*.*"
+            if (-not $files) { $status.Text = "Ready"; return }
+            $status.Text = "Selecting output folder..."
+            $out = Get-OutputFolder "Select output folder for unlocked files"
+            if (-not $out) { $status.Text = "Ready"; return }
+            $btnConvert.Enabled = $btnUnlock.Enabled = $btnSettings.Enabled = $false
+            $status.Text = "Processing files..."
+            for ($i=0; $i -le 100; $i++) { $progress.Value = $i; [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 10 }
+            $status.Text = "Password removal completed"; Play-Sound "Success"
+        } catch {
+            $status.Text = "Error occurred"
+            Show-MessageBox "Password removal error: $($_.Exception.Message)" "Error" "Error"
+            Write-Log "Unlock error: $($_.Exception.Message)" "ERROR"
+        } finally {
+            $btnConvert.Enabled = $btnUnlock.Enabled = $btnSettings.Enabled = $true; $progress.Value = 0
         }
     })
-    
-    # Settings button click handler
-    $script:btnSettings.Add_Click({
-        Show-SettingsDialog | Out-Null
-    })
-    
-    # Form closing event
-    $mainForm.Add_FormClosing({
-        Write-Log "Application closing"
-    })
-    
-    # Initialize logging
-    Write-Log "Excel Utility Tool v$($global:Config.Version) started"
-    
-    return $mainForm
+
+    $btnSettings.Add_Click({ Show-SettingsDialog })
+    $btnHelp.Add_Click({ Show-HelpDialog })
+
+    $f.Add_FormClosing({ Write-Log "Application closing" })
+    Write-Log "Excel Utility Tool started"
+    return $f
 }
 
-# ==============================================================================
-# APPLICATION ENTRY POINT
-# ==============================================================================
+# --- Application Entry Point ---
 
-# Ensure logs directory exists
 if (-not (Test-Path $global:Config.LogPath)) {
     New-Item -Path $global:Config.LogPath -ItemType Directory -Force | Out-Null
 }
-
-# Start the application
 try {
     Write-Host "Starting Excel Utility Tool v$($global:Config.Version)..." -ForegroundColor Green
-    
     $mainForm = Initialize-MainForm
     [void]$mainForm.ShowDialog()
-}
-catch {
-    Write-Error "Failed to start application: $($_.Exception.Message)"
-    Write-Log "Application startup failed: $($_.Exception.Message)" "ERROR"
-    
+} catch {
+    Write-Error "Application failed: $($_.Exception.Message)"
+    Write-Log "Startup failed: $($_.Exception.Message)" "ERROR"
     [System.Windows.Forms.MessageBox]::Show(
-        "Failed to start the Excel Utility Tool:`n`n$($_.Exception.Message)`n`nPlease check the log files for more details.",
-        "Startup Error",
-        "OK",
-        [System.Windows.Forms.MessageBoxIcon]::Error
+        "Failed to start the Excel Utility Tool:`n`n$($_.Exception.Message)`nPlease check the log files for details.",
+        "Startup Error", "OK", [System.Windows.Forms.MessageBoxIcon]::Error
     )
+} finally {
+    Write-Log "Session ended"
 }
-finally {
-    Write-Log "Application session ended"
-}
-
-# ==============================================================================
-# END OF SCRIPT
-# ==============================================================================
