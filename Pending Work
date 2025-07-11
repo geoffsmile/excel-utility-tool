@@ -378,11 +378,26 @@ function Initialize-MainForm {
         ForeColor=$global:Config.Colors.Text
     }))
 
-    $btnConvert = [StandardButton]::new(); $btnConvert.Text="Convert to Excel (.xlsx)"; $btnConvert.Size=New-Object System.Drawing.Size(360,35); $btnConvert.Location=New-Object System.Drawing.Point(20,80)
-    $btnUnlock = [StandardButton]::new(); $btnUnlock.Text="Unlock Excel File"; $btnUnlock.Size=New-Object System.Drawing.Size(360,35); $btnUnlock.Location=New-Object System.Drawing.Point(20,125)
-    $btnSettings = [StandardButton]::new(); $btnSettings.Text="Application Tool Settings"; $btnSettings.Size=New-Object System.Drawing.Size(360,35); $btnSettings.Location=New-Object System.Drawing.Point(20,170)
-    $btnHelp = [StandardButton]::new(); $btnHelp.Text="Help && Information"; $btnHelp.Size=New-Object System.Drawing.Size(360,35); $btnHelp.Location=New-Object System.Drawing.Point(20,215)
-    $f.Controls.AddRange(@($btnConvert,$btnUnlock,$btnSettings,$btnHelp))
+    $script:btnConvert = [StandardButton]::new(); 
+    $script:btnConvert.Text="Convert to Excel (.xlsx)"; 
+    $script:btnConvert.Size=New-Object System.Drawing.Size(360,35); 
+    $script:btnConvert.Location=New-Object System.Drawing.Point(20,80)
+    
+    $script:btnUnlock = [StandardButton]::new(); 
+    $script:btnUnlock.Text="Unlock Excel File"; 
+    $script:btnUnlock.Size=New-Object System.Drawing.Size(360,35); 
+    $script:btnUnlock.Location=New-Object System.Drawing.Point(20,125)
+    
+    $script:btnSettings = [StandardButton]::new(); 
+    $script:btnSettings.Text="Application Tool Settings"; 
+    $script:btnSettings.Size=New-Object System.Drawing.Size(360,35); 
+    $script:btnSettings.Location=New-Object System.Drawing.Point(20,170)
+    
+    $btnHelp = [StandardButton]::new(); $btnHelp.Text="Help && Information"; 
+    $btnHelp.Size=New-Object System.Drawing.Size(360,35); 
+    $btnHelp.Location=New-Object System.Drawing.Point(20,215)
+    
+    $f.Controls.AddRange(@($script:btnConvert,$script:btnUnlock,$script:btnSettings,$btnHelp))
 
     $status = New-Object System.Windows.Forms.Label -Property @{Text="Ready!"; Size=New-Object System.Drawing.Size(360,20); Location=New-Object System.Drawing.Point(20,260); ForeColor=$global:Config.Colors.Text}
     $progress = New-Object System.Windows.Forms.ProgressBar -Property @{Size=New-Object System.Drawing.Size(360,20); Location=New-Object System.Drawing.Point(20,280)}
@@ -394,7 +409,7 @@ function Initialize-MainForm {
         TextAlign="MiddleCenter"
     }))
 
-    $btnConvert.Add_Click({
+    $script:btnConvert.Add_Click({
         try {
             $status.Text = "Selecting files..."
             $files = Get-InputFiles "Select files to convert to .xlsx" "CSV files (*.csv)|*.csv|Text files (*.txt)|*.txt|Excel files (*.xls)|*.xls|All files (*.*)|*.*"
@@ -402,7 +417,9 @@ function Initialize-MainForm {
             $status.Text = "Selecting output folder..."
             $out = Get-OutputFolder "Select output folder for converted files"
             if (-not $out) { $status.Text = "Ready"; return }
-            $btnConvert.Enabled = $btnUnlock.Enabled = $btnSettings.Enabled = $false
+            $script:btnConvert.Enabled = $false
+            $script:btnUnlock.Enabled = $false
+            $script:btnSettings.Enabled = $false
             $status.Text = "Processing files..."
             for ($i=0; $i -le 100; $i++) { $progress.Value = $i; [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 10 }
             $status.Text = "Conversion completed"; Play-Sound "Success"
@@ -411,11 +428,14 @@ function Initialize-MainForm {
             Show-MessageBox "Conversion error: $($_.Exception.Message)" "Error" "Error"
             Write-Log "Convert error: $($_.Exception.Message)" "ERROR"
         } finally {
-            $btnConvert.Enabled = $btnUnlock.Enabled = $btnSettings.Enabled = $true; $progress.Value = 0
+            $script:btnConvert.Enabled = $true
+            $script:btnUnlock.Enabled = $true
+            $script:btnSettings.Enabled = $true
+        ; $progress.Value = 0
         }
     })
 
-    $btnUnlock.Add_Click({
+    $script:btnUnlock.Add_Click({
         try {
             $pw = Get-PasswordInput "Enter Excel Password"
             if (-not $pw) { return }
@@ -425,7 +445,7 @@ function Initialize-MainForm {
             $status.Text = "Selecting output folder..."
             $out = Get-OutputFolder "Select output folder for unlocked files"
             if (-not $out) { $status.Text = "Ready"; return }
-            $btnConvert.Enabled = $btnUnlock.Enabled = $btnSettings.Enabled = $false
+            $script:btnConvert.Enabled = $script:btnUnlock.Enabled = $script:btnSettings.Enabled = $false
             $status.Text = "Processing files..."
             for ($i=0; $i -le 100; $i++) { $progress.Value = $i; [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 10 }
             $status.Text = "Password removal completed"; Play-Sound "Success"
@@ -434,11 +454,11 @@ function Initialize-MainForm {
             Show-MessageBox "Password removal error: $($_.Exception.Message)" "Error" "Error"
             Write-Log "Unlock error: $($_.Exception.Message)" "ERROR"
         } finally {
-            $btnConvert.Enabled = $btnUnlock.Enabled = $btnSettings.Enabled = $true; $progress.Value = 0
+            $script:btnConvert.Enabled = $script:btnUnlock.Enabled = $script:btnSettings.Enabled = $true; $progress.Value = 0
         }
     })
 
-    $btnSettings.Add_Click({ Show-SettingsDialog })
+    $script:btnSettings.Add_Click({ Show-SettingsDialog })
     $btnHelp.Add_Click({ Show-HelpDialog })
 
     $f.Add_FormClosing({ Write-Log "Application closing" })
