@@ -399,9 +399,9 @@ function Initialize-MainForm {
     
     $f.Controls.AddRange(@($script:btnConvert,$script:btnUnlock,$script:btnSettings,$btnHelp))
 
-    $status = New-Object System.Windows.Forms.Label -Property @{Text="Ready!"; Size=New-Object System.Drawing.Size(360,20); Location=New-Object System.Drawing.Point(20,260); ForeColor=$global:Config.Colors.Text}
-    $progress = New-Object System.Windows.Forms.ProgressBar -Property @{Size=New-Object System.Drawing.Size(360,20); Location=New-Object System.Drawing.Point(20,280)}
-    $f.Controls.Add($status); $f.Controls.Add($progress)
+    $script:status = New-Object System.Windows.Forms.Label -Property @{Text="Ready!"; Size=New-Object System.Drawing.Size(360,20); Location=New-Object System.Drawing.Point(20,260); ForeColor=$global:Config.Colors.Text}
+    $script:progress= New-Object System.Windows.Forms.ProgressBar -Property @{Size=New-Object System.Drawing.Size(360,20); Location=New-Object System.Drawing.Point(20,280)}
+    $f.Controls.Add($script:status); $f.Controls.Add($progress)
     $f.Controls.Add((New-Object System.Windows.Forms.Label -Property @{
         Text="© 2025 Geoff Lu. All rights reserved.`nCreated July 1, 2025"
         Size=New-Object System.Drawing.Size(360,40); Location=New-Object System.Drawing.Point(20,320)
@@ -410,53 +410,105 @@ function Initialize-MainForm {
     }))
 
     $script:btnConvert.Add_Click({
-        try {
-            $status.Text = "Selecting files..."
-            $files = Get-InputFiles "Select files to convert to .xlsx" "CSV files (*.csv)|*.csv|Text files (*.txt)|*.txt|Excel files (*.xls)|*.xls|All files (*.*)|*.*"
-            if (-not $files) { $status.Text = "Ready"; return }
-            $status.Text = "Selecting output folder..."
-            $out = Get-OutputFolder "Select output folder for converted files"
-            if (-not $out) { $status.Text = "Ready"; return }
-            $script:btnConvert.Enabled = $false
-            $script:btnUnlock.Enabled = $false
-            $script:btnSettings.Enabled = $false
-            $status.Text = "Processing files..."
-            for ($i=0; $i -le 100; $i++) { $progress.Value = $i; [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 10 }
-            $status.Text = "Conversion completed"; Play-Sound "Success"
-        } catch {
-            $status.Text = "Error occurred"
-            Show-MessageBox "Conversion error: $($_.Exception.Message)" "Error" "Error"
-            Write-Log "Convert error: $($_.Exception.Message)" "ERROR"
-        } finally {
-            $script:btnConvert.Enabled = $true
-            $script:btnUnlock.Enabled = $true
-            $script:btnSettings.Enabled = $true
-        ; $progress.Value = 0
-        }
-    })
+    $excel = New-Object -ComObject Excel.Application
+    $excel.Visible = $false
+    $excel.DisplayAlerts = $false
 
-    $script:btnUnlock.Add_Click({
-        try {
-            $pw = Get-PasswordInput "Enter Excel Password"
-            if (-not $pw) { return }
-            $status.Text = "Selecting files..."
-            $files = Get-InputFiles "Select password-protected Excel files" "Excel files (*.xls;*.xlsx)|*.xls;*.xlsx|All files (*.*)|*.*"
-            if (-not $files) { $status.Text = "Ready"; return }
-            $status.Text = "Selecting output folder..."
-            $out = Get-OutputFolder "Select output folder for unlocked files"
-            if (-not $out) { $status.Text = "Ready"; return }
-            $script:btnConvert.Enabled = $script:btnUnlock.Enabled = $script:btnSettings.Enabled = $false
-            $status.Text = "Processing files..."
-            for ($i=0; $i -le 100; $i++) { $progress.Value = $i; [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 10 }
-            $status.Text = "Password removal completed"; Play-Sound "Success"
-        } catch {
-            $status.Text = "Error occurred"
-            Show-MessageBox "Password removal error: $($_.Exception.Message)" "Error" "Error"
-            Write-Log "Unlock error: $($_.Exception.Message)" "ERROR"
-        } finally {
-            $script:btnConvert.Enabled = $script:btnUnlock.Enabled = $script:btnSettings.Enabled = $true; $progress.Value = 0
+    try {
+        $status.Text = "Selecting files..."
+        $files = Get-InputFiles "Select files to convert to .xlsx" "CSV files (*.csv)|*.csv|Text files (*.txt)|*.txt|Excel files (*.xls)|*.xls|All files (*.*)|*.*"
+        if (-not $files) { $status.Text = "Ready"; return }
+
+        $status.Text = "Selecting output folder..."
+        $out = Get-OutputFolder "Select output folder for converted files"
+        if (-not $out) { $status.Text = "Ready"; return }
+
+        $script:btnConvert.Enabled = $false
+        $script:btnUnlock.Enabled = $false
+        $script:btnSettings.Enabled = $false
+
+        $status.Text = "Processing files..."
+        for ($i=0; $i -le 100; $i++) {
+            $progress.Value = $i
+            [System.Windows.Forms.Application]::DoEvents()
+            Start-Sleep -Milliseconds 10
         }
-    })
+
+        $status.Text = "Conversion completed!"
+        Play-Sound "Success"
+    } catch {
+        $status.Text = "Error occurred!"
+        Show-MessageBox "Conversion error: $($_.Exception.Message)" "Error" "Error"
+        Write-Log "Convert error: $($_.Exception.Message)" "ERROR"
+    } finally {
+if ($workbook) {
+    $workbook.Close($false)
+    [System.Runtime.Interopservices.Marshal]::ReleaseComObject($workbook) | Out-Null
+}
+if ($excel) {
+    $excel.Quit()
+    [System.Runtime.Interopservices.Marshal]::ReleaseComObject($excel) | Out-Null
+}
+[System.GC]::Collect()
+[System.GC]::WaitForPendingFinalizers()
+
+        $script:btnConvert.Enabled = $true
+        $script:btnUnlock.Enabled = $true
+        $script:btnSettings.Enabled = $true
+        $progress.Value = 0
+    }
+})
+
+
+$script:btnUnlock.Add_Click({
+    $excel = New-Object -ComObject Excel.Application
+    $excel.Visible = $false
+    $excel.DisplayAlerts = $false
+
+    try {
+        $pw = Get-PasswordInput "Enter Excel Password"
+        if (-not $pw) { return }
+
+        $status.Text = "Selecting files..."
+        $files = Get-InputFiles "Select password-protected Excel files" "Excel files (*.xls;*.xlsx)|*.xls;*.xlsx|All files (*.*)|*.*"
+        if (-not $files) { $status.Text = "Ready"; return }
+
+        $status.Text = "Selecting output folder..."
+        $out = Get-OutputFolder "Select output folder for unlocked files"
+        if (-not $out) { $status.Text = "Ready"; return }
+
+        $script:btnConvert.Enabled = $false
+        $script:btnUnlock.Enabled = $false
+        $script:btnSettings.Enabled = $false
+
+        $status.Text = "Processing files..."
+        for ($i=0; $i -le 100; $i++) {
+            $progress.Value = $i
+            [System.Windows.Forms.Application]::DoEvents()
+            Start-Sleep -Milliseconds 10
+        }
+
+        $status.Text = "Password removal completed"
+        Play-Sound "Success"
+    } catch {
+        $status.Text = "Error occurred"
+        Show-MessageBox "Password removal error: $($_.Exception.Message)" "Error" "Error"
+        Write-Log "Unlock error: $($_.Exception.Message)" "ERROR"
+    } finally {
+        $workbook.Close($false)
+        $excel.Quit()
+
+        [System.Runtime.Interopservices.Marshal]::ReleaseComObject($workbook) | Out-Null
+        [System.Runtime.Interopservices.Marshal]::ReleaseComObject($excel) | Out-Null
+        [System.GC]::Collect()
+        [System.GC]::WaitForPendingFinalizers()
+
+        $script:btnConvert.Enabled = $true
+        $script:btnUnlock.Enabled = $true
+        $script:btnSettings.Enabled = $true
+        $progress.Value = 0
+    }
+})
 
     $script:btnSettings.Add_Click({ Show-SettingsDialog })
     $btnHelp.Add_Click({ Show-HelpDialog })
