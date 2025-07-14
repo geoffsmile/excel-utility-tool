@@ -14,8 +14,6 @@
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-# CRITICAL FIX: Validate that the script is being run from a saved file.
-# The $PSScriptRoot variable is null if run in an untitled ISE pane, which causes crashes.
 if (-not $PSScriptRoot)
 {
 	[System.Windows.Forms.MessageBox]::Show("This script must be saved to a file before running. Please save the script and try again.", "Startup Error", "OK", "Error")
@@ -24,7 +22,7 @@ if (-not $PSScriptRoot)
 
 # --- Global Configuration ---
 $global:Config = @{
-	Version = "5.7.5" # Updated version number
+	Version = "5.7.5" # Update version number for every revision
 	Colors  = @{
 		Primary = [System.Drawing.Color]::FromArgb(0, 71, 187)
 		Secondary = [System.Drawing.Color]::White
@@ -435,7 +433,6 @@ Redistribution and modification are permitted for personal and internal business
 
 "@))
 	
-	# Close Button
 	$closeButton = New-Object System.Windows.Forms.Button
 	$closeButton.Text = "Close"
 	$closeButton.Size = New-Object System.Drawing.Size(150, 30)
@@ -447,7 +444,6 @@ Redistribution and modification are permitted for personal and internal business
 	$closeButton.DialogResult = "OK"
 	$form.AcceptButton = $closeButton
 	
-	# Add Controls
 	$form.Controls.Add($headerPanel)
 	$form.Controls.Add($tabControl)
 	$form.Controls.Add($closeButton)
@@ -459,7 +455,7 @@ function Show-SettingsDialog
 {
 	$form = New-Object System.Windows.Forms.Form
 	$form.Text = "Application Tool Settings"
-	$form.Size = New-Object System.Drawing.Size(550, 370) # Adjusted height
+	$form.Size = New-Object System.Drawing.Size(550, 370)
 	$form.FormBorderStyle = "FixedDialog"
 	$form.MaximizeBox = $false
 	$form.MinimizeBox = $false
@@ -570,13 +566,13 @@ function Show-SettingsDialog
 	$btnOK = [StandardButton]::new();
 	$btnOK.Text = "Save";
 	$btnOK.Size = New-Object System.Drawing.Size(80, 30);
-	$btnOK.Location = New-Object System.Drawing.Point(350, 300); # Adjusted position
+	$btnOK.Location = New-Object System.Drawing.Point(350, 300);
 	$btnOK.DialogResult = "OK"
 	
 	$btnCancel = [StandardButton]::new();
 	$btnCancel.Text = "Cancel";
 	$btnCancel.Size = New-Object System.Drawing.Size(80, 30);
-	$btnCancel.Location = New-Object System.Drawing.Point(440, 300); # Adjusted position
+	$btnCancel.Location = New-Object System.Drawing.Point(440, 300);
 	$btnCancel.DialogResult = "Cancel"
 	
 	$form.Controls.Add($btnOK);
@@ -743,7 +739,6 @@ function Initialize-MainForm
 	$script:btnSettings.Size = New-Object System.Drawing.Size(360, 35);
 	$script:btnSettings.Location = New-Object System.Drawing.Point(20, 170)
 	
-	# FIX: Add robust try/catch block to the event handler for diagnostics.
 	$script:btnSettings.Add_Click({
 			try
 			{
@@ -794,22 +789,18 @@ function Initialize-MainForm
 			
 			try
 			{
-				# Get input files
 				if ($null -ne $status) { $status.Text = "Selecting files..." }
 				$files = Get-InputFiles "Select files to convert to .xlsx" "CSV files (*.csv)|*.csv|Text files (*.txt)|*.txt|Excel files (*.xls)|*.xls|All files (*.*)|*.*"
 				if (-not $files) { if ($null -ne $status) { $status.Text = "Ready" }; return }
 				
-				# Get output folder
 				if ($null -ne $status) { $status.Text = "Selecting output folder..." }
 				$outFolder = Get-OutputFolder "Select output folder for converted files"
 				if (-not $outFolder) { if ($null -ne $status) { $status.Text = "Ready" }; return }
 				
-				# Disable buttons during processing
 				$script:btnConvert.Enabled = $false
 				$script:btnUnlock.Enabled = $false
 				$script:btnSettings.Enabled = $false
 				
-				# Create Excel instance
 				$excel = New-Object -ComObject Excel.Application
 				$excel.Visible = $false
 				$excel.DisplayAlerts = $false
@@ -817,11 +808,9 @@ function Initialize-MainForm
 				$totalFiles = $files.Count
 				$currentFile = 0
 				
-				# Process each file
 				foreach ($file in $files)
 				{
 					$currentFile++
-					# FIX: Add defensive null checks for UI elements.
 					if ($null -ne $progress) { $progress.Value = ($currentFile / $totalFiles) * 100 }
 					if ($null -ne $status) { $status.Text = "Processing file ${currentFile} of ${totalFiles}: $([System.IO.Path]::GetFileName($file))" }
 					[System.Windows.Forms.Application]::DoEvents()
@@ -878,13 +867,13 @@ function Initialize-MainForm
 				{
 					$workbook.Close($false)
 					[System.Runtime.Interopservices.Marshal]::ReleaseComObject($workbook) | Out-Null
-					$workbook = $null # FIX: Explicitly null out the variable after release.
+					$workbook = $null
 				}
 				if ($excel)
 				{
 					$excel.Quit()
 					[System.Runtime.Interopservices.Marshal]::ReleaseComObject($excel) | Out-Null
-					$excel = $null # FIX: Explicitly null out the variable after release.
+					$excel = $null
 				}
 				[System.GC]::Collect()
 				[System.GC]::WaitForPendingFinalizers()
@@ -902,7 +891,6 @@ function Initialize-MainForm
 			
 			try
 			{
-				# Get password from user
 				$password = Get-PasswordInput "Enter Excel Password"
 				if (-not $password)
 				{
@@ -910,7 +898,6 @@ function Initialize-MainForm
 					return
 				}
 				
-				# Get input files
 				if ($null -ne $status) { $status.Text = "Selecting files..." }
 				$files = Get-InputFiles "Select password-protected Excel files" "Excel files (*.xls;*.xlsx)|*.xls;*.xlsx|All files (*.*)|*.*"
 				if (-not $files)
@@ -919,7 +906,6 @@ function Initialize-MainForm
 					return
 				}
 				
-				# Get output folder
 				if ($null -ne $status) { $status.Text = "Selecting output folder..." }
 				$outFolder = Get-OutputFolder "Select output folder for unlocked files"
 				if (-not $outFolder)
@@ -928,12 +914,10 @@ function Initialize-MainForm
 					return
 				}
 				
-				# Disable buttons during processing
 				$script:btnConvert.Enabled = $false
 				$script:btnUnlock.Enabled = $false
 				$script:btnSettings.Enabled = $false
 				
-				# Create Excel instance
 				$excel = New-Object -ComObject Excel.Application
 				$excel.Visible = $false
 				$excel.DisplayAlerts = $false
@@ -943,11 +927,9 @@ function Initialize-MainForm
 				$successCount = 0
 				$failCount = 0
 				
-				# Process each file
 				foreach ($file in $files)
 				{
 					$currentFile++
-					# FIX: Add defensive null checks for UI elements.
 					if ($null -ne $progress) { $progress.Value = ($currentFile / $totalFiles) * 100 }
 					if ($null -ne $status) { $status.Text = "Processing file ${currentFile} of ${totalFiles}: $([System.IO.Path]::GetFileName($file))" }
 					[System.Windows.Forms.Application]::DoEvents()
@@ -1047,13 +1029,13 @@ function Initialize-MainForm
 				{
 					$workbook.Close($false)
 					[System.Runtime.Interopservices.Marshal]::ReleaseComObject($workbook) | Out-Null
-					$workbook = $null # FIX: Explicitly null out the variable after release.
+					$workbook = $null
 				}
 				if ($excel)
 				{
 					$excel.Quit()
 					[System.Runtime.Interopservices.Marshal]::ReleaseComObject($excel) | Out-Null
-					$excel = $null # FIX: Explicitly null out the variable after release.
+					$excel = $null
 				}
 				[System.GC]::Collect()
 				[System.GC]::WaitForPendingFinalizers()
@@ -1065,7 +1047,6 @@ function Initialize-MainForm
 			}
 		})
 	
-	# FIX: Add robust try/catch block to the event handler for diagnostics.
 	$btnHelp.Add_Click({
 			try
 			{
@@ -1079,7 +1060,6 @@ function Initialize-MainForm
 			}
 		})
 	
-	# Return the form
 	return $form
 }
 
@@ -1097,7 +1077,6 @@ try
 }
 catch
 {
-	# FIX: Log the full exception details for better startup debugging.
 	$errorMessage = "A fatal error occurred on startup: $($_.Exception.ToString())"
 	Write-Log $errorMessage "ERROR"
 	Show-MessageBox "Failed to start the Excel Utility Tool:`n`n$($_.Exception.Message)`nPlease check the log files for details." "Startup Error" "Error"
